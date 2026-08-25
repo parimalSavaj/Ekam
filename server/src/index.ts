@@ -4,7 +4,7 @@ import { DatabaseService } from "./shared/services/database/database.service.ts"
 import { AuthService } from "./shared/services/auth/auth.service.ts";
 import { LoggerService } from "./shared/services/logger/logger.service.ts";
 import { IdService } from "./shared/services/id/id.service.ts";
-import { ChunkingService } from "./shared/services/chunking/chunking.service.ts";
+import { SemanticChunkingService } from "./shared/services/chunking/semantic-chunking.service.ts";
 import { PdfParserService } from "./shared/services/pdf-parser/pdf-parser.service.ts";
 import { QueueService } from "./shared/services/queue/queue.service.ts";
 import { RetrievalService } from "./shared/services/retrieval/retrieval.service.ts";
@@ -24,14 +24,16 @@ async function bootstrap() {
   const authService = AuthService.getInstance();
   const logger = LoggerService.getInstance();
   const idService = IdService.getInstance();
-  const chunkingService = ChunkingService.getInstance(aiConfig.chunking.chunkSize, aiConfig.chunking.chunkOverlap);
+  const llmService = OpenRouterExternalService.getInstance(config.openrouterApiKey);
+  // SemanticChunkingService needs the LLM to decide chunk boundaries, so it is
+  // constructed after llmService. The same singleton is reused below for chat.
+  const chunkingService = new SemanticChunkingService(llmService, logger, aiConfig.chat.defaultModel);
   const pdfParserService = PdfParserService.getInstance();
   const embeddingService = EmbeddingExternalService.getInstance(config.openrouterApiKey, aiConfig.embedding.model);
   const firecrawlService = FirecrawlExternalService.getInstance(config.firecrawlApiKey);
   const cloudinaryService = CloudinaryExternalService.getInstance(config.cloudinary);
   const youtubeService = YoutubeExternalService.getInstance();
   const queueService = QueueService.getInstance();
-  const llmService = OpenRouterExternalService.getInstance(config.openrouterApiKey);
   const webSearchService = TavilyExternalService.getInstance(config.tavilyApiKey);
 
   // Create retrieval service (for RAG)

@@ -46,31 +46,81 @@ export class ProcessSourceWorker {
     source.markProcessing();
     await this.sourcesRepository.update(source);
 
-    // 2. Extract content based on source type
-    const extractedContent = await this.extractContent(sourceId, notebookId, type, content, url, fileBase64, originalFilename);
+    // Everything from content extraction through persistence is wrapped so that
+    // ANY failure (extraction, chunking, embedding, or the DB transaction)
+    // reliably transitions the source to FAILED in the DB. Without this, a
+    // failure before the transaction would leave the source stuck in PROCESSING
+    // forever, because the job registry only logs and re-throws.
+    try {
+      // 2. Extract content based on source type
+      const extractedContent = await this.extractContent(sourceId, notebookId, type, content, url, fileBase64, originalFilename);
 
-    // 3. Chunk the content
-    const chunks = this.chunkingService.chunk(extractedContent);
+      // 3. Chunk the content
+      // NOTE: SemanticChunkingService.chunk() returns a Promise at runtime (async
+      // facade behind the sync IChunkingService interface). The original
+      // ChunkingService is sync. `await` handles both correctly — it resolves the
+      // Promise, and is a harmless no-op for a plain array.
+      const chunks = await this.chunkingService.chunk(extractedContent);
 
-    // 4. Generate embeddings (if there are chunks)
-    let embeddings: number[][] = [];
-    if (chunks.length > 0) {
-      const chunkTexts = chunks.map((c) => c.content);
-      embeddings = await this.embeddingService.generateEmbeddings(chunkTexts);
+      // 4. Generate embeddings (if there are chunks)
+      let embeddings: number[][] = [];
+      if (chunks.length > 0) {
+        const chunkTexts = chunks.map((c) => c.content);
+        embeddings = await this.embeddingService.generateEmbeddings(chunkTexts);
+      }
+
+      // 5. Store everything in a transaction (content + chunks + mark completed + increment count)
+      const contentId = this.idService.generate();
+      const chunkRecords = chunks.map((chunk, index) => ({
+        id: this.idService.generate(),
+        sourceId,
+        notebookId,
+        content: chunk.content,
+        chunkIndex: chunk.chunkIndex,
+        tokenCount: chunk.tokenCount,
+        embedding: embeddings[index],
+      }));
+
+      await this.persistResults(contentId, sourceId, notebookId, extractedContent, chunkRecords, source, chunks.length);
+
+      this.logger.info("Process source job completed", {
+        sourceId,
+        notebookId,
+        type,
+        chunkCount: chunks.length,
+        charCount: extractedContent.length,
+      });
+
+      return { sourceId, chunkCount: chunks.length, charCount: extractedContent.length };
+    } catch (error) {
+      await this.markSourceFailed(source, error);
+      throw error;
     }
+  }
 
-    // 5. Store everything in a transaction (content + chunks + mark completed + increment count)
-    const contentId = this.idService.generate();
-    const chunkRecords = chunks.map((chunk, index) => ({
-      id: this.idService.generate(),
-      sourceId,
-      notebookId,
-      content: chunk.content,
-      chunkIndex: chunk.chunkIndex,
-      tokenCount: chunk.tokenCount,
-      embedding: embeddings[index],
-    }));
-
+  /**
+   * Persists content, chunks, completion status and notebook counter inside a
+   * single DB transaction. On failure it rolls back and re-throws so the caller
+   * can transition the source to FAILED — it does NOT mark failed itself, to
+   * keep failure handling in one place.
+   */
+  private async persistResults(
+    contentId: string,
+    sourceId: string,
+    notebookId: string,
+    extractedContent: string,
+    chunkRecords: Array<{
+      id: string;
+      sourceId: string;
+      notebookId: string;
+      content: string;
+      chunkIndex: number;
+      tokenCount: number;
+      embedding: number[];
+    }>,
+    source: Awaited<ReturnType<ISourcesRepository["findById"]>>,
+    chunkCount: number
+  ): Promise<void> {
     const client = await this.db.getClient();
 
     try {
@@ -85,39 +135,52 @@ export class ProcessSourceWorker {
       }
 
       // Mark source as completed
-      source.markCompleted({ chunkCount: chunks.length, charCount: extractedContent.length });
-      await this.sourcesRepository.update(source, client);
+      source!.markCompleted({ chunkCount, charCount: extractedContent.length });
+      await this.sourcesRepository.update(source!, client);
 
       // Increment notebook active source count
       await this.notebooksRepository.incrementActiveSourceCount(notebookId, client);
 
       await client.query('COMMIT');
     } catch (error) {
-      await client.query('ROLLBACK');
-      this.logger.error("Process source transaction failed", {
-        sourceId,
-        notebookId,
-        error: (error as Error).message,
-      });
-
-      // Mark source as failed since the transaction rolled back
-      source.markFailed("Failed to store processed content");
-      await this.sourcesRepository.update(source);
-
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        this.logger.error("Process source transaction rollback failed", {
+          sourceId,
+          notebookId,
+          error: (rollbackError as Error).message,
+        });
+      }
       throw error;
     } finally {
       client.release();
     }
+  }
 
-    this.logger.info("Process source job completed", {
-      sourceId,
-      notebookId,
-      type,
-      chunkCount: chunks.length,
-      charCount: extractedContent.length,
+  /**
+   * Transitions the source to FAILED and persists it on a fresh (non-transactional)
+   * connection. Any error while marking failed is logged and swallowed so it can
+   * never mask the original processing error.
+   */
+  private async markSourceFailed(
+    source: NonNullable<Awaited<ReturnType<ISourcesRepository["findById"]>>>,
+    originalError: unknown
+  ): Promise<void> {
+    this.logger.error("Process source job failed — marking source as FAILED", {
+      sourceId: source.id,
+      error: (originalError as Error).message,
     });
 
-    return { sourceId, chunkCount: chunks.length, charCount: extractedContent.length };
+    try {
+      source.markFailed((originalError as Error).message ?? "Source processing failed");
+      await this.sourcesRepository.update(source);
+    } catch (updateError) {
+      this.logger.error("Failed to persist FAILED status for source", {
+        sourceId: source.id,
+        error: (updateError as Error).message,
+      });
+    }
   }
 
   private async extractContent(
