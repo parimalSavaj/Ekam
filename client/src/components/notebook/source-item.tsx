@@ -5,6 +5,7 @@ import { FileText, Globe, Film, File, Hash, Trash2, Loader2, CheckCircle2, Alert
 
 interface SourceItemProps {
   source: Source;
+  onOpen: () => void;
   onDelete: () => void;
 }
 
@@ -23,13 +24,24 @@ const statusConfig: Record<Source["status"], { icon: typeof CheckCircle2; classN
   failed: { icon: AlertCircle, className: "text-red-500", label: "Failed" },
 };
 
-export function SourceItem({ source, onDelete }: SourceItemProps) {
+export function SourceItem({ source, onOpen, onDelete }: SourceItemProps) {
   const TypeIcon = typeIcons[source.type] || FileText;
   const status = statusConfig[source.status];
   const StatusIcon = status.icon;
 
   return (
-    <div className="group flex items-start gap-2.5 rounded-xl px-3 py-2.5 transition-colors hover:bg-[#0d2847]/5 dark:hover:bg-white/5">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="group flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 transition-colors hover:bg-[#0d2847]/5 dark:hover:bg-white/5"
+    >
       {/* Type icon */}
       <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#0d2847]/5 dark:bg-white/10">
         <TypeIcon className="h-4 w-4 text-[#0d2847]/60 dark:text-white/60" />

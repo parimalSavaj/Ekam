@@ -37,6 +37,18 @@ const MIN_CHUNK_CHARS = 200;
 /** Characters carried over from the end of one chunk into the start of the next. */
 const OVERLAP_CHARS = 150;
 
+/**
+ * An intermediate segment carrying both its (possibly overlap-augmented) text
+ * and the absolute character offsets [start, end) of its ORIGINAL span within
+ * the full source content. `content.slice(start, end)` equals the segment's
+ * pre-overlap text.
+ */
+type Segment = {
+  text: string;
+  start: number;
+  end: number;
+};
+
 export class SemanticChunkingService implements IChunkingService {
   constructor(
     private readonly llmService: ILlmService,
@@ -73,7 +85,12 @@ export class SemanticChunkingService implements IChunkingService {
     const trimmed = content.trim();
     if (!trimmed) return [];
 
-    const segments = await this.splitIntoSegments(trimmed);
+    // Offsets are reported relative to the ORIGINAL `content` string (which is
+    // what gets persisted as source_contents.content), so account for any
+    // leading whitespace stripped by trim().
+    const baseOffset = content.indexOf(trimmed);
+
+    const segments = await this.splitIntoSegments(trimmed, baseOffset);
     return this.segmentsToChunkResults(segments);
   }
 
@@ -81,20 +98,34 @@ export class SemanticChunkingService implements IChunkingService {
     const chunks: ChunkResult[] = [];
     let globalIndex = 0;
 
+    // Offsets across pages are relative to the pages joined by "\n" — the
+    // caller is responsible for storing content in that same joined form if it
+    // wants offsets to line up. Page-mode offsets track position within the
+    // running concatenation.
+    let runningOffset = 0;
+
     for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
-      const pageText = pages[pageIndex].trim();
-      if (!pageText) continue;
+      const rawPage = pages[pageIndex];
+      const pageText = rawPage.trim();
 
-      const segments = await this.splitIntoSegments(pageText);
+      if (pageText) {
+        const baseOffset = runningOffset + rawPage.indexOf(pageText);
+        const segments = await this.splitIntoSegments(pageText, baseOffset);
 
-      for (const content of segments) {
-        chunks.push({
-          content,
-          chunkIndex: globalIndex++,
-          tokenCount: this.estimateTokenCount(content),
-          metadata: { page: pageIndex + 1 },
-        });
+        for (const segment of segments) {
+          chunks.push({
+            content: segment.text,
+            chunkIndex: globalIndex++,
+            tokenCount: this.estimateTokenCount(segment.text),
+            startOffset: segment.start,
+            endOffset: segment.end,
+            metadata: { page: pageIndex + 1 },
+          });
+        }
       }
+
+      // +1 accounts for the "\n" join between pages.
+      runningOffset += rawPage.length + 1;
     }
 
     return chunks;
@@ -105,20 +136,27 @@ export class SemanticChunkingService implements IChunkingService {
   /**
    * Asks the LLM for semantic split points, then slices the text at those
    * positions. Long texts are handled in windows of MAX_PREVIEW_CHARS.
+   *
+   * `baseOffset` is the absolute position of `text[0]` within the original
+   * content, so every returned segment carries offsets relative to the full
+   * source content (not just this local slice).
    */
-  private async splitIntoSegments(text: string): Promise<string[]> {
-    if (text.length <= MIN_CHUNK_CHARS) return [text];
+  private async splitIntoSegments(text: string, baseOffset: number): Promise<Segment[]> {
+    if (text.length <= MIN_CHUNK_CHARS) {
+      return [{ text, start: baseOffset, end: baseOffset + text.length }];
+    }
 
-    const allSegments: string[] = [];
+    const allSegments: Segment[] = [];
     let cursor = 0;
 
     // Process the text in windows so we never send more than MAX_PREVIEW_CHARS
     // to the LLM at once while still handling arbitrarily long documents.
     while (cursor < text.length) {
       const window = text.slice(cursor, cursor + MAX_PREVIEW_CHARS);
-      const localSegments = await this.splitWindowWithLlm(window);
+      // Offsets within this window map back to the full content by adding the
+      // window's own base (baseOffset + cursor).
+      const localSegments = await this.splitWindowWithLlm(window, baseOffset + cursor);
 
-      // Re-attach global cursor offset and push
       allSegments.push(...localSegments);
       cursor += MAX_PREVIEW_CHARS;
     }
@@ -130,21 +168,21 @@ export class SemanticChunkingService implements IChunkingService {
    * Sends one window of text to the LLM and returns the segments it suggests.
    * Falls back to paragraph splitting if the LLM fails or returns garbage.
    */
-  private async splitWindowWithLlm(window: string): Promise<string[]> {
+  private async splitWindowWithLlm(window: string, windowBase: number): Promise<Segment[]> {
     try {
       const splitPoints = await this.askLlmForSplitPoints(window);
 
       if (!splitPoints || splitPoints.length === 0) {
         this.logger.warn("SemanticChunkingService: LLM returned no split points, using fallback");
-        return this.fallbackSplit(window);
+        return this.fallbackSplit(window, windowBase);
       }
 
-      return this.sliceAtPoints(window, splitPoints);
+      return this.sliceAtPoints(window, splitPoints, windowBase);
     } catch (err) {
       this.logger.error("SemanticChunkingService: LLM call failed, using fallback", {
         error: (err as Error).message,
       });
-      return this.fallbackSplit(window);
+      return this.fallbackSplit(window, windowBase);
     }
   }
 
@@ -214,49 +252,72 @@ Rules:
    * Slices the text at the given split-point indices.
    * E.g. points [300, 700] on a 1000-char string produces three segments:
    *   text[0..300], text[300..700], text[700..1000]
+   *
+   * Each returned segment carries absolute offsets (windowBase + local index)
+   * into the full content, adjusted for any whitespace trimmed off the ends so
+   * that `content.slice(start, end)` exactly equals the segment text.
    */
-  private sliceAtPoints(text: string, points: number[]): string[] {
-    const segments: string[] = [];
+  private sliceAtPoints(text: string, points: number[], windowBase: number): Segment[] {
+    const segments: Segment[] = [];
     let prev = 0;
 
+    const pushTrimmed = (rawStart: number, rawEnd: number, enforceMin: boolean) => {
+      const raw = text.slice(rawStart, rawEnd);
+      const seg = this.toTrimmedSegment(raw, windowBase + rawStart);
+      if (!seg) return;
+      if (enforceMin && seg.text.length < MIN_CHUNK_CHARS) return;
+      segments.push(seg);
+    };
+
     for (const point of points) {
-      const segment = text.slice(prev, point).trim();
-      if (segment.length >= MIN_CHUNK_CHARS) {
-        segments.push(segment);
-      }
+      pushTrimmed(prev, point, true);
       prev = point;
     }
 
-    // Last segment
-    const tail = text.slice(prev).trim();
-    if (tail.length > 0) {
-      segments.push(tail);
-    }
+    // Last segment — kept even if short so no content is lost from the tail.
+    pushTrimmed(prev, text.length, false);
 
     return segments;
+  }
+
+  /**
+   * Trims whitespace from a raw slice and returns a Segment whose offsets point
+   * at the trimmed text within the full content. Returns null for blank slices.
+   */
+  private toTrimmedSegment(raw: string, rawAbsoluteStart: number): Segment | null {
+    const leading = raw.length - raw.trimStart().length;
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return null;
+
+    const start = rawAbsoluteStart + leading;
+    return { text: trimmed, start, end: start + trimmed.length };
   }
 
   /**
    * Adds character overlap between adjacent segments so context bleeds across
    * chunk boundaries, improving recall at retrieval time.
    */
-  private addOverlapAndFilter(segments: string[]): string[] {
-    if (segments.length <= 1) return segments.filter((s) => s.trim().length > 0);
+  private addOverlapAndFilter(segments: Segment[]): Segment[] {
+    if (segments.length <= 1) return segments.filter((s) => s.text.trim().length > 0);
 
-    const result: string[] = [];
+    const result: Segment[] = [];
 
     for (let i = 0; i < segments.length; i++) {
-      let content = segments[i];
+      const segment = segments[i];
+      let content = segment.text;
 
-      // Prepend tail of previous segment as overlap context
+      // Prepend tail of previous segment as overlap context. IMPORTANT: this
+      // only affects the chunk TEXT (used for embeddings/RAG recall). The
+      // start/end offsets stay pinned to this segment's own boundaries so the
+      // UI highlight maps to the exact, non-overlapping region of the content.
       if (i > 0 && OVERLAP_CHARS > 0) {
-        const prev = segments[i - 1];
+        const prev = segments[i - 1].text;
         const overlap = prev.slice(-OVERLAP_CHARS).trimStart();
         content = overlap + " " + content;
       }
 
       if (content.trim().length >= MIN_CHUNK_CHARS) {
-        result.push(content.trim());
+        result.push({ text: content.trim(), start: segment.start, end: segment.end });
       }
     }
 
@@ -267,24 +328,42 @@ Rules:
 
   /**
    * Simple paragraph/line splitter used when the LLM is unavailable.
-   * Never throws.
+   * Never throws. Tracks absolute offsets (windowBase-relative) for each part.
    */
-  private fallbackSplit(text: string): string[] {
+  private fallbackSplit(text: string, windowBase: number): Segment[] {
     for (const sep of FALLBACK_SEPARATORS) {
-      const parts = text.split(sep).map((p) => p.trim()).filter((p) => p.length >= MIN_CHUNK_CHARS);
-      if (parts.length > 1) return parts;
+      if (!text.includes(sep)) continue;
+
+      const rawParts = text.split(sep);
+      const segments: Segment[] = [];
+      let cursor = 0;
+
+      for (const rawPart of rawParts) {
+        const seg = this.toTrimmedSegment(rawPart, windowBase + cursor);
+        if (seg && seg.text.length >= MIN_CHUNK_CHARS) {
+          segments.push(seg);
+        }
+        // Advance past this part and the separator that followed it.
+        cursor += rawPart.length + sep.length;
+      }
+
+      if (segments.length > 1) return segments;
     }
-    // Last resort – return whole window as one chunk
-    return [text.trim()];
+
+    // Last resort – return whole window as one chunk.
+    const whole = this.toTrimmedSegment(text, windowBase);
+    return whole ? [whole] : [];
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  private segmentsToChunkResults(segments: string[]): ChunkResult[] {
-    return segments.map((content, index) => ({
-      content,
+  private segmentsToChunkResults(segments: Segment[]): ChunkResult[] {
+    return segments.map((segment, index) => ({
+      content: segment.text,
       chunkIndex: index,
-      tokenCount: this.estimateTokenCount(content),
+      tokenCount: this.estimateTokenCount(segment.text),
+      startOffset: segment.start,
+      endOffset: segment.end,
     }));
   }
 

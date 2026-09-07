@@ -20,6 +20,7 @@ import {
 interface AllSourcesViewProps {
   notebookId: string;
   onAddSource: () => void;
+  onOpenSource: (sourceId: string) => void;
 }
 
 const typeIcons: Record<Source["type"], typeof FileText> = {
@@ -37,7 +38,7 @@ const statusConfig: Record<Source["status"], { icon: typeof CheckCircle2; classN
   failed: { icon: AlertCircle, className: "text-red-500", label: "Failed" },
 };
 
-export function AllSourcesView({ notebookId, onAddSource }: AllSourcesViewProps) {
+export function AllSourcesView({ notebookId, onAddSource, onOpenSource }: AllSourcesViewProps) {
   const { data: sources = [], isLoading } = useSources(notebookId);
   const deleteMutation = useDeleteSource(notebookId);
 
@@ -96,7 +97,16 @@ export function AllSourcesView({ notebookId, onAddSource }: AllSourcesViewProps)
             return (
               <div
                 key={source.id}
-                className="group relative flex items-start gap-3 rounded-xl border border-white/20 bg-white/50 p-4 backdrop-blur-sm transition-all hover:shadow-md dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.06]"
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenSource(source.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenSource(source.id);
+                  }
+                }}
+                className="group relative flex cursor-pointer items-start gap-3 rounded-xl border border-white/20 bg-white/50 p-4 backdrop-blur-sm transition-all hover:shadow-md dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.06]"
               >
                 {/* Type icon */}
                 <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#0d2847]/5 dark:bg-white/10">
@@ -123,7 +133,10 @@ export function AllSourcesView({ notebookId, onAddSource }: AllSourcesViewProps)
 
                 {/* Delete */}
                 <button
-                  onClick={() => handleDelete(source.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(source.id);
+                  }}
                   className="absolute right-2 top-2 rounded-lg p-1.5 text-[#0d2847]/20 opacity-0 transition-all hover:bg-red-100 hover:text-red-600 group-hover:opacity-100 dark:text-white/15 dark:hover:bg-red-500/10 dark:hover:text-red-400"
                   title="Delete source"
                 >

@@ -62,6 +62,14 @@ export class SourcesRoutes {
       this.controller.get
     );
 
+    // Full content + chunks (with char offsets) for the content viewer
+    this.router.get(
+      "/:id/content",
+      this.authMiddleware.authenticate,
+      ValidationMiddleware.validateParams(sourceParamsSchema),
+      this.controller.getContent
+    );
+
     this.router.delete(
       "/:id",
       this.authMiddleware.authenticate,

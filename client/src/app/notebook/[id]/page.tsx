@@ -7,11 +7,12 @@ import { useEffect, useState, useCallback } from "react";
 import { NotebookSidebar } from "@/components/notebook/notebook-sidebar";
 import { ChatArea } from "@/components/notebook/chat-area";
 import { AllSourcesView } from "@/components/notebook/all-sources-view";
+import { SourceContentView } from "@/components/notebook/source-content-view";
 import { AddSourceDialog } from "@/components/notebook/add-source-dialog";
 import { SettingsPanel } from "@/components/notebook/settings-panel";
 import { ArrowLeft, PanelLeftClose, PanelLeft } from "lucide-react";
 
-export type MainView = "chat" | "all-sources";
+export type MainView = "chat" | "all-sources" | "source-content";
 
 export default function NotebookDetailPage() {
   const { data: session, isPending } = useSession();
@@ -25,9 +26,15 @@ export default function NotebookDetailPage() {
   const [showAddSource, setShowAddSource] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
 
   const handleConversationChange = useCallback((convId: string | null) => {
     setSelectedConversationId(convId);
+  }, []);
+
+  const handleOpenSource = useCallback((sourceId: string) => {
+    setSelectedSourceId(sourceId);
+    setMainView("source-content");
   }, []);
 
   useEffect(() => {
@@ -93,6 +100,7 @@ export default function NotebookDetailPage() {
             activeConversationId={selectedConversationId}
             onViewAllSources={() => setMainView("all-sources")}
             onAddSource={() => setShowAddSource(true)}
+            onOpenSource={handleOpenSource}
             onOpenSettings={() => setShowSettings(true)}
             onSelectConversation={(convId) => {
               setSelectedConversationId(convId);
@@ -137,8 +145,8 @@ export default function NotebookDetailPage() {
             </h1>
           </div>
 
-          {/* View toggle in header when showing sources */}
-          {mainView === "all-sources" && (
+          {/* View toggle in header when not chatting */}
+          {mainView !== "chat" && (
             <button
               onClick={() => setMainView("chat")}
               className="ml-auto rounded-lg px-3 py-1.5 text-xs font-medium text-[#0d2847]/60 transition-colors hover:bg-[#0d2847]/5 dark:text-white/50 dark:hover:bg-white/10"
@@ -161,6 +169,14 @@ export default function NotebookDetailPage() {
           <AllSourcesView
             notebookId={notebookId}
             onAddSource={() => setShowAddSource(true)}
+            onOpenSource={handleOpenSource}
+          />
+        )}
+        {mainView === "source-content" && selectedSourceId && (
+          <SourceContentView
+            notebookId={notebookId}
+            sourceId={selectedSourceId}
+            onBack={() => setMainView("all-sources")}
           />
         )}
       </div>

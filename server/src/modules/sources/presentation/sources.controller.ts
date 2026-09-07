@@ -4,10 +4,12 @@ import { ApiResponse } from "../../../shared/core/api-response.ts";
 import { CreateSourceUseCase } from "../application/create-source.use-case.ts";
 import { ListSourcesUseCase } from "../application/list-sources.use-case.ts";
 import { GetSourceUseCase } from "../application/get-source.use-case.ts";
+import { GetSourceContentUseCase } from "../application/get-source-content.use-case.ts";
 import { DeleteSourceUseCase } from "../application/delete-source.use-case.ts";
 import { CreateSourceRequestDto } from "../application/dtos/create-source.dto.ts";
 import { ListSourcesRequestDto } from "../application/dtos/list-sources.dto.ts";
 import { GetSourceRequestDto } from "../application/dtos/get-source.dto.ts";
+import { GetSourceContentRequestDto } from "../application/dtos/get-source-content.dto.ts";
 import { DeleteSourceRequestDto } from "../application/dtos/delete-source.dto.ts";
 
 export class SourcesController {
@@ -15,6 +17,7 @@ export class SourcesController {
     private readonly createSourceUseCase: CreateSourceUseCase,
     private readonly listSourcesUseCase: ListSourcesUseCase,
     private readonly getSourceUseCase: GetSourceUseCase,
+    private readonly getSourceContentUseCase: GetSourceContentUseCase,
     private readonly deleteSourceUseCase: DeleteSourceUseCase
   ) {}
 
@@ -42,6 +45,16 @@ export class SourcesController {
     try {
       const dto = GetSourceRequestDto.fromRequest(req);
       const result = await this.getSourceUseCase.execute(dto);
+      res.status(HTTP_STATUS.OK).json(ApiResponse.success(result, HTTP_STATUS.OK).toJSON());
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getContent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const dto = GetSourceContentRequestDto.fromRequest(req);
+      const result = await this.getSourceContentUseCase.execute(dto);
       res.status(HTTP_STATUS.OK).json(ApiResponse.success(result, HTTP_STATUS.OK).toJSON());
     } catch (error) {
       next(error);

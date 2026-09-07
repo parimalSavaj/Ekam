@@ -99,12 +99,36 @@ export const notebooksApi = {
     }),
 };
 
+export interface SourceChunk {
+  id: string;
+  chunkIndex: number;
+  content: string;
+  // Character offsets into the full `content`. When present,
+  // content.slice(startOffset, endOffset) is the exact span for this chunk.
+  startOffset: number | null;
+  endOffset: number | null;
+}
+
+export interface SourceContent {
+  id: string;
+  title: string;
+  type: Source["type"];
+  status: Source["status"];
+  charCount: number;
+  chunkCount: number;
+  content: string | null;
+  chunks: SourceChunk[];
+}
+
 export const sourcesApi = {
   list: (notebookId: string) =>
     request<Source[]>(`/api/notebooks/${notebookId}/sources`),
 
   get: (notebookId: string, id: string) =>
     request<Source>(`/api/notebooks/${notebookId}/sources/${id}`),
+
+  getContent: (notebookId: string, id: string) =>
+    request<SourceContent>(`/api/notebooks/${notebookId}/sources/${id}/content`),
 
   create: (notebookId: string, data: { title: string; type: string; content?: string; metadata?: Record<string, unknown> }) =>
     request<Source>(`/api/notebooks/${notebookId}/sources`, {

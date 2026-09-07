@@ -78,6 +78,8 @@ export class ProcessSourceWorker {
         content: chunk.content,
         chunkIndex: chunk.chunkIndex,
         tokenCount: chunk.tokenCount,
+        startOffset: chunk.startOffset ?? null,
+        endOffset: chunk.endOffset ?? null,
         embedding: embeddings[index],
       }));
 
@@ -116,6 +118,8 @@ export class ProcessSourceWorker {
       content: string;
       chunkIndex: number;
       tokenCount: number;
+      startOffset: number | null;
+      endOffset: number | null;
       embedding: number[];
     }>,
     source: Awaited<ReturnType<ISourcesRepository["findById"]>>,

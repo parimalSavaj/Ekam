@@ -9,6 +9,7 @@ import { NotebooksRepository } from "../../infrastructure/repositories/notebooks
 import { CreateSourceUseCase } from "./application/create-source.use-case.ts";
 import { ListSourcesUseCase } from "./application/list-sources.use-case.ts";
 import { GetSourceUseCase } from "./application/get-source.use-case.ts";
+import { GetSourceContentUseCase } from "./application/get-source-content.use-case.ts";
 import { DeleteSourceUseCase } from "./application/delete-source.use-case.ts";
 import { SourcesController } from "./presentation/sources.controller.ts";
 
@@ -33,12 +34,20 @@ export class SourcesFactory {
     );
     const listSourcesUseCase = new ListSourcesUseCase(sourcesRepository, notebooksRepository, logger);
     const getSourceUseCase = new GetSourceUseCase(sourcesRepository, sourceContentsRepository, notebooksRepository, logger);
+    const getSourceContentUseCase = new GetSourceContentUseCase(
+      sourcesRepository,
+      sourceContentsRepository,
+      sourceChunksRepository,
+      notebooksRepository,
+      logger
+    );
     const deleteSourceUseCase = new DeleteSourceUseCase(sourcesRepository, sourceChunksRepository, sourceContentsRepository, notebooksRepository, db, logger);
 
     return new SourcesController(
       createSourceUseCase,
       listSourcesUseCase,
       getSourceUseCase,
+      getSourceContentUseCase,
       deleteSourceUseCase
     );
   }

@@ -16,6 +16,7 @@ interface NotebookSidebarProps {
   activeConversationId: string | null;
   onViewAllSources: () => void;
   onAddSource: () => void;
+  onOpenSource: (sourceId: string) => void;
   onOpenSettings: () => void;
   onSelectConversation: (conversationId: string) => void;
   onNewChat: () => void;
@@ -27,6 +28,7 @@ export function NotebookSidebar({
   activeConversationId,
   onViewAllSources,
   onAddSource,
+  onOpenSource,
   onOpenSettings,
   onSelectConversation,
   onNewChat,
@@ -122,6 +124,7 @@ export function NotebookSidebar({
                 <SourceItem
                   key={source.id}
                   source={source}
+                  onOpen={() => onOpenSource(source.id)}
                   onDelete={() => handleDeleteSource(source.id)}
                 />
               ))}

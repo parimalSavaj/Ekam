@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { sourcesApi, Source } from "@/lib/api";
+import { sourcesApi, Source, SourceContent } from "@/lib/api";
 import { notebookKeys } from "./use-notebooks";
 
 export const sourceKeys = {
   all: (notebookId: string) => ["sources", notebookId] as const,
   detail: (notebookId: string, id: string) => ["sources", notebookId, id] as const,
+  content: (notebookId: string, id: string) => ["sources", notebookId, id, "content"] as const,
 };
 
 export function useSources(notebookId: string) {
@@ -32,6 +33,14 @@ export function useSource(notebookId: string, id: string) {
   return useQuery<Source>({
     queryKey: sourceKeys.detail(notebookId, id),
     queryFn: () => sourcesApi.get(notebookId, id),
+    enabled: !!notebookId && !!id,
+  });
+}
+
+export function useSourceContent(notebookId: string, id: string) {
+  return useQuery<SourceContent>({
+    queryKey: sourceKeys.content(notebookId, id),
+    queryFn: () => sourcesApi.getContent(notebookId, id),
     enabled: !!notebookId && !!id,
   });
 }

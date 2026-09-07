@@ -1,7 +1,7 @@
 import { PoolClient } from "pg";
 import { IDatabaseService } from "../../../shared/services/database/database.service.interface.ts";
 import { ISourceChunksRepository } from "./source-chunks.repository.interface.ts";
-import { SourceChunkRow } from "./source-chunks.types.ts";
+import { SourceChunkRow, SourceChunkContentRow } from "./source-chunks.types.ts";
 
 export class SourceChunksRepository implements ISourceChunksRepository {
   private readonly TABLE = "source_chunks";
@@ -15,6 +15,8 @@ export class SourceChunksRepository implements ISourceChunksRepository {
     content: string;
     chunkIndex: number;
     tokenCount: number;
+    startOffset: number | null;
+    endOffset: number | null;
     embedding: number[];
   }[], client?: PoolClient): Promise<void> {
     if (chunks.length === 0) return;
@@ -26,7 +28,7 @@ export class SourceChunksRepository implements ISourceChunksRepository {
 
     for (const chunk of chunks) {
       values.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}::vector, NOW())`
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}::vector, NOW())`
       );
       params.push(
         chunk.id,
@@ -35,14 +37,16 @@ export class SourceChunksRepository implements ISourceChunksRepository {
         chunk.content,
         chunk.chunkIndex,
         chunk.tokenCount,
+        chunk.startOffset,
+        chunk.endOffset,
         `[${chunk.embedding.join(",")}]`
       );
-      paramIndex += 7;
+      paramIndex += 9;
     }
 
     const sql = `
       INSERT INTO ${this.TABLE} (
-        id, source_id, notebook_id, content, chunk_index, token_count, embedding, created_at
+        id, source_id, notebook_id, content, chunk_index, token_count, start_offset, end_offset, embedding, created_at
       ) VALUES ${values.join(", ")}
     `;
 
@@ -51,6 +55,17 @@ export class SourceChunksRepository implements ISourceChunksRepository {
     } else {
       await this.db.insert(sql, params);
     }
+  }
+
+  async findBySourceId(sourceId: string): Promise<SourceChunkContentRow[]> {
+    const sql = `
+      SELECT id, source_id, notebook_id, content, chunk_index, token_count,
+             start_offset, end_offset, created_at
+      FROM ${this.TABLE}
+      WHERE source_id = $1
+      ORDER BY chunk_index ASC
+    `;
+    return this.db.selectMany<SourceChunkContentRow>(sql, [sourceId]);
   }
 
   async deleteBySourceId(sourceId: string, client?: PoolClient): Promise<void> {
