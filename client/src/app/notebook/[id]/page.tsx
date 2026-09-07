@@ -2,6 +2,7 @@
 
 import { useSession } from "@/lib/auth-client";
 import { useNotebook } from "@/hooks/use-notebooks";
+import { useSources } from "@/hooks/use-sources";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { NotebookSidebar } from "@/components/notebook/notebook-sidebar";
@@ -10,7 +11,29 @@ import { AllSourcesView } from "@/components/notebook/all-sources-view";
 import { SourceContentView } from "@/components/notebook/source-content-view";
 import { AddSourceDialog } from "@/components/notebook/add-source-dialog";
 import { SettingsPanel } from "@/components/notebook/settings-panel";
-import { ArrowLeft, PanelLeftClose, PanelLeft } from "lucide-react";
+import { PageLoader } from "@/components/page-loader";
+import { CommandPalette } from "@/components/command-palette";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { cn } from "@/lib/utils";
+import { pluralize } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  ArrowLeft,
+  PanelLeftClose,
+  PanelLeft,
+  MessageSquare,
+  FileStack,
+  Search,
+} from "lucide-react";
 
 export type MainView = "chat" | "all-sources" | "source-content";
 
@@ -21,11 +44,15 @@ export default function NotebookDetailPage() {
   const notebookId = params.id as string;
 
   const { data: notebook, isLoading } = useNotebook(notebookId);
+  const { data: sources = [] } = useSources(notebookId);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mainView, setMainView] = useState<MainView>("chat");
   const [showAddSource, setShowAddSource] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
+    null
+  );
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
 
   const handleConversationChange = useCallback((convId: string | null) => {
@@ -44,56 +71,41 @@ export default function NotebookDetailPage() {
   }, [session, isPending, router]);
 
   if (isPending || !session) {
-    return (
-      <div className="relative flex min-h-screen items-center justify-center">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#e8f4ff] via-[#c8e4ff] to-[#a8d4ff] dark:hidden" />
-        <div className="absolute inset-0 hidden bg-gradient-to-br from-[#0a1628] via-[#0d2847] to-[#001a3a] dark:block" />
-        <div className="relative z-10">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#0d2847]/20 border-t-[#0d2847] dark:border-white/20 dark:border-t-white" />
-        </div>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   if (isLoading) {
-    return (
-      <div className="relative flex min-h-screen items-center justify-center">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#e8f4ff] via-[#c8e4ff] to-[#a8d4ff] dark:hidden" />
-        <div className="absolute inset-0 hidden bg-gradient-to-br from-[#0a1628] via-[#0d2847] to-[#001a3a] dark:block" />
-        <div className="relative z-10">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#0d2847]/20 border-t-[#0d2847] dark:border-white/20 dark:border-t-white" />
-        </div>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   if (!notebook) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#e8f4ff] via-[#c8e4ff] to-[#a8d4ff] dark:hidden" />
-        <div className="absolute inset-0 hidden bg-gradient-to-br from-[#0a1628] via-[#0d2847] to-[#001a3a] dark:block" />
-        <div className="relative z-10 text-center">
-          <p className="text-lg font-medium text-[#0d2847] dark:text-white">Notebook not found</p>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="mt-4 rounded-xl bg-[#0d2847] px-4 py-2 text-sm text-white dark:bg-white/10"
-          >
-            Back to Dashboard
-          </button>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <h1 className="text-base font-semibold tracking-tight">
+            Notebook not found
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            It may have been deleted, or the link is incorrect.
+          </p>
+          <Button size="lg" className="mt-5" onClick={() => router.push("/dashboard")}>
+            <ArrowLeft />
+            Back to notebooks
+          </Button>
         </div>
       </div>
     );
   }
 
+  const isSourcesView = mainView === "all-sources" || mainView === "source-content";
+
   return (
-    <div className="relative flex h-screen overflow-hidden">
-      {/* Backgrounds */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#e8f4ff] via-[#c8e4ff] to-[#a8d4ff] dark:hidden" />
-      <div className="absolute inset-0 hidden bg-gradient-to-br from-[#0a1628] via-[#0d2847] to-[#001a3a] dark:block" />
+    <div className="flex h-screen overflow-hidden bg-background">
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 
       {/* Sidebar */}
       {sidebarOpen && (
-        <div className="relative z-20 flex w-72 flex-shrink-0 flex-col border-r border-white/20 bg-white/30 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.02]">
+        <aside className="flex w-64 flex-shrink-0 flex-col border-r bg-sidebar">
           <NotebookSidebar
             notebook={notebook}
             notebookId={notebookId}
@@ -111,109 +123,128 @@ export default function NotebookDetailPage() {
               setMainView("chat");
             }}
           />
-        </div>
+        </aside>
       )}
 
-      {/* Main content area */}
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-        {/* Header */}
-        <header className="flex items-center gap-3 border-b border-white/20 px-4 py-3 dark:border-white/10">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="rounded-lg p-1.5 text-[#0d2847]/60 transition-colors hover:bg-[#0d2847]/5 dark:text-white/50 dark:hover:bg-white/10"
-            title="Back to dashboard"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+      {/* Main */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b px-3">
+          <Tooltip>
+            <TooltipTrigger
+              render={<Button variant="ghost" size="icon-sm" />}
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+              className="text-muted-foreground"
+            >
+              {sidebarOpen ? <PanelLeftClose /> : <PanelLeft />}
+            </TooltipTrigger>
+            <TooltipContent>
+              {sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            </TooltipContent>
+          </Tooltip>
 
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="rounded-lg p-1.5 text-[#0d2847]/60 transition-colors hover:bg-[#0d2847]/5 dark:text-white/50 dark:hover:bg-white/10"
-            title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-          >
-            {sidebarOpen ? (
-              <PanelLeftClose className="h-4 w-4" />
-            ) : (
-              <PanelLeft className="h-4 w-4" />
-            )}
-          </button>
+          {/* Breadcrumb */}
+          <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5">
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="rounded px-1 text-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              Notebooks
+            </button>
+            <span aria-hidden="true" className="text-muted-foreground/50">
+              /
+            </span>
+            <span className="truncate px-1 text-sm font-medium">{notebook.title}</span>
+          </nav>
 
-          <div className="flex items-center gap-2">
-            <span className="text-lg">{notebook.emoji || "📓"}</span>
-            <h1 className="text-base font-semibold text-[#0d2847] dark:text-white">
-              {notebook.title}
-            </h1>
+          {/* View switcher */}
+          <div className="mx-auto flex items-center gap-0.5 rounded-lg border p-0.5">
+            <Button
+              variant={mainView === "chat" ? "secondary" : "ghost"}
+              size="xs"
+              aria-pressed={mainView === "chat"}
+              onClick={() => setMainView("chat")}
+              className="gap-1.5"
+            >
+              <MessageSquare />
+              Chat
+            </Button>
+            <Button
+              variant={isSourcesView ? "secondary" : "ghost"}
+              size="xs"
+              aria-pressed={isSourcesView}
+              onClick={() => setMainView("all-sources")}
+              className="gap-1.5"
+            >
+              <FileStack />
+              Sources
+              {sources.length > 0 && (
+                <span className="text-muted-foreground tnum">{sources.length}</span>
+              )}
+            </Button>
           </div>
 
-          {/* View toggle in header when not chatting */}
-          {mainView !== "chat" && (
-            <button
-              onClick={() => setMainView("chat")}
-              className="ml-auto rounded-lg px-3 py-1.5 text-xs font-medium text-[#0d2847]/60 transition-colors hover:bg-[#0d2847]/5 dark:text-white/50 dark:hover:bg-white/10"
-            >
-              ← Back to Chat
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger
+                render={<Button variant="ghost" size="icon-sm" />}
+                onClick={() => setPaletteOpen(true)}
+                aria-label="Search"
+                className="text-muted-foreground"
+              >
+                <Search />
+              </TooltipTrigger>
+              <TooltipContent className="gap-1.5">
+                Search <Kbd>⌘K</Kbd>
+              </TooltipContent>
+            </Tooltip>
+            <ThemeToggle />
+          </div>
         </header>
 
-        {/* Main view */}
-        {mainView === "chat" && (
-          <ChatArea
-            notebookId={notebookId}
-            notebook={notebook}
-            initialConversationId={selectedConversationId}
-            onConversationChange={handleConversationChange}
-          />
-        )}
-        {mainView === "all-sources" && (
-          <AllSourcesView
-            notebookId={notebookId}
-            onAddSource={() => setShowAddSource(true)}
-            onOpenSource={handleOpenSource}
-          />
-        )}
-        {mainView === "source-content" && selectedSourceId && (
-          <SourceContentView
-            notebookId={notebookId}
-            sourceId={selectedSourceId}
-            onBack={() => setMainView("all-sources")}
-          />
-        )}
+        <div className={cn("flex min-h-0 flex-1 flex-col")}>
+          {mainView === "chat" && (
+            <ChatArea
+              notebookId={notebookId}
+              notebook={notebook}
+              initialConversationId={selectedConversationId}
+              onConversationChange={handleConversationChange}
+            />
+          )}
+          {mainView === "all-sources" && (
+            <AllSourcesView
+              notebookId={notebookId}
+              onAddSource={() => setShowAddSource(true)}
+              onOpenSource={handleOpenSource}
+            />
+          )}
+          {mainView === "source-content" && selectedSourceId && (
+            <SourceContentView
+              notebookId={notebookId}
+              sourceId={selectedSourceId}
+              onBack={() => setMainView("all-sources")}
+            />
+          )}
+        </div>
       </div>
 
-      {/* Add source dialog — centered on main screen */}
-      {showAddSource && (
-        <AddSourceDialog
-          notebookId={notebookId}
-          onClose={() => setShowAddSource(false)}
-        />
-      )}
+      <AddSourceDialog
+        notebookId={notebookId}
+        open={showAddSource}
+        onOpenChange={setShowAddSource}
+      />
 
-      {/* Settings dialog — centered on main screen */}
-      {showSettings && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => setShowSettings(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="mx-4 w-full max-w-md rounded-2xl border border-white/20 bg-white/95 p-6 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0d2847]/95"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-[#0d2847] dark:text-white">
-                Notebook Settings
-              </h3>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="rounded-lg p-1.5 text-[#0d2847]/40 transition-colors hover:bg-[#0d2847]/5 dark:text-white/40 dark:hover:bg-white/10"
-              >
-                ✕
-              </button>
-            </div>
-            <SettingsPanel notebook={notebook} />
-          </div>
-        </div>
-      )}
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Notebook settings</DialogTitle>
+            <DialogDescription>
+              {pluralize(sources.length, "source")} · {notebook.aiModel}
+            </DialogDescription>
+          </DialogHeader>
+          <SettingsPanel notebook={notebook} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

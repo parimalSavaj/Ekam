@@ -27,6 +27,13 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -48,117 +55,184 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Light theme - Windows 11 icy blue-white (from image right side) */
+/*
+ * Palette — Windows 11 inspired: icy blue-white in light, deep navy in dark.
+ *
+ * The cool cast is the product's identity, so surfaces stay tinted. What keeps
+ * it from feeling decorative is that depth is expressed through layered surface
+ * lightness (background -> sidebar -> card -> popover) and crisp 1px borders,
+ * never through blur or floating gradients.
+ */
+/*
+ * Two deliberate rules keep this coherent:
+ *
+ * 1. Every neutral surface and text token sits on hue 245 — the ice/navy axis.
+ *    The original palette drifted across 225-270, which is what makes a tinted
+ *    grey look muddy: adjacent surfaces disagree about which blue they are.
+ *    Only the accent leaves the axis (262), so "interactive" reads as a
+ *    different family rather than a slightly different grey.
+ *
+ * 2. Elevation is a monotonic lightness ladder, and chroma falls as surfaces
+ *    rise. Light: background .955 -> card .985 -> popover .995. Dark: background
+ *    .135 -> sidebar .155 -> card .178 -> popover .205. Recessed fills (sidebar,
+ *    muted) move the other way and hold more tint.
+ */
 :root {
-  --background: oklch(0.95 0.02 230);
-  --foreground: oklch(0.18 0.04 245);
-  --card: oklch(0.97 0.015 225);
-  --card-foreground: oklch(0.18 0.04 245);
-  --popover: oklch(0.97 0.015 225);
-  --popover-foreground: oklch(0.18 0.04 245);
-  --primary: oklch(0.5 0.22 260);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.9 0.035 225);
-  --secondary-foreground: oklch(0.2 0.04 245);
-  --muted: oklch(0.92 0.025 225);
-  --muted-foreground: oklch(0.45 0.04 240);
-  --accent: oklch(0.88 0.05 230);
-  --accent-foreground: oklch(0.2 0.04 245);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.85 0.04 225);
-  --input: oklch(0.88 0.035 225);
-  --ring: oklch(0.5 0.22 260);
-  --chart-1: oklch(0.5 0.22 260);
-  --chart-2: oklch(0.58 0.18 250);
-  --chart-3: oklch(0.42 0.2 270);
-  --chart-4: oklch(0.52 0.14 235);
-  --chart-5: oklch(0.65 0.12 245);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.93 0.025 228);
-  --sidebar-foreground: oklch(0.18 0.04 245);
-  --sidebar-primary: oklch(0.5 0.22 260);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.88 0.05 230);
-  --sidebar-accent-foreground: oklch(0.2 0.04 245);
-  --sidebar-border: oklch(0.85 0.04 225);
-  --sidebar-ring: oklch(0.5 0.22 260);
+  color-scheme: light;
+  --radius: 0.5rem;
+
+  /* Recessed -> raised */
+  --sidebar: oklch(0.935 0.024 245);
+  --background: oklch(0.955 0.018 245);
+  --card: oklch(0.985 0.01 245);
+  --popover: oklch(0.995 0.005 245);
+
+  --foreground: oklch(0.2 0.035 245);
+  --card-foreground: oklch(0.2 0.035 245);
+  --popover-foreground: oklch(0.2 0.035 245);
+  --sidebar-foreground: oklch(0.2 0.035 245);
+
+  /* Accent leaves the surface axis so actions read as their own family. */
+  --primary: oklch(0.48 0.21 262);
+  --primary-foreground: oklch(0.99 0.002 245);
+
+  --secondary: oklch(0.905 0.03 245);
+  --secondary-foreground: oklch(0.22 0.035 245);
+
+  --muted: oklch(0.915 0.026 245);
+  --muted-foreground: oklch(0.44 0.035 245);
+
+  --accent: oklch(0.875 0.045 245);
+  --accent-foreground: oklch(0.2 0.035 245);
+
+  /* Status hues share a lightness band so they feel like one family. */
+  --destructive: oklch(0.53 0.21 27);
+  --destructive-foreground: oklch(0.99 0.002 245);
+  --success: oklch(0.52 0.13 155);
+  --success-foreground: oklch(0.99 0.002 245);
+  --warning: oklch(0.6 0.14 72);
+  --warning-foreground: oklch(0.99 0.002 245);
+  --info: oklch(0.52 0.17 250);
+  --info-foreground: oklch(0.99 0.002 245);
+
+  --border: oklch(0.865 0.03 245);
+  --input: oklch(0.885 0.028 245);
+  --ring: oklch(0.48 0.21 262);
+
+  --chart-1: oklch(0.48 0.21 262);
+  --chart-2: oklch(0.56 0.16 240);
+  --chart-3: oklch(0.63 0.13 220);
+  --chart-4: oklch(0.46 0.18 280);
+  --chart-5: oklch(0.68 0.11 250);
+
+  --sidebar-primary: oklch(0.48 0.21 262);
+  --sidebar-primary-foreground: oklch(0.99 0.002 245);
+  --sidebar-accent: oklch(0.875 0.045 245);
+  --sidebar-accent-foreground: oklch(0.2 0.035 245);
+  --sidebar-border: oklch(0.865 0.03 245);
+  --sidebar-ring: oklch(0.48 0.21 262);
 }
 
-/* Dark theme - Windows 11 deep navy-black with blue glow (from image left side) */
 .dark {
-  --background: oklch(0.13 0.035 245);
-  --foreground: oklch(0.93 0.015 230);
-  --card: oklch(0.17 0.04 248);
-  --card-foreground: oklch(0.93 0.015 230);
-  --popover: oklch(0.17 0.04 248);
-  --popover-foreground: oklch(0.93 0.015 230);
-  --primary: oklch(0.55 0.24 260);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.2 0.05 248);
-  --secondary-foreground: oklch(0.93 0.015 230);
-  --muted: oklch(0.22 0.045 248);
-  --muted-foreground: oklch(0.6 0.04 235);
-  --accent: oklch(0.25 0.07 255);
-  --accent-foreground: oklch(0.93 0.015 230);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.3 0.06 250 / 40%);
-  --input: oklch(0.3 0.06 250 / 50%);
-  --ring: oklch(0.55 0.24 260);
-  --chart-1: oklch(0.58 0.24 260);
-  --chart-2: oklch(0.48 0.2 250);
-  --chart-3: oklch(0.42 0.18 270);
-  --chart-4: oklch(0.52 0.15 240);
-  --chart-5: oklch(0.32 0.12 255);
-  --sidebar: oklch(0.15 0.04 246);
-  --sidebar-foreground: oklch(0.93 0.015 230);
-  --sidebar-primary: oklch(0.55 0.24 260);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.23 0.06 252);
-  --sidebar-accent-foreground: oklch(0.93 0.015 230);
-  --sidebar-border: oklch(0.3 0.06 250 / 40%);
-  --sidebar-ring: oklch(0.55 0.24 260);
+  color-scheme: dark;
+
+  /* Recessed -> raised */
+  --background: oklch(0.135 0.032 245);
+  --sidebar: oklch(0.155 0.034 245);
+  --card: oklch(0.178 0.036 245);
+  --popover: oklch(0.205 0.038 245);
+
+  --foreground: oklch(0.94 0.012 245);
+  --card-foreground: oklch(0.94 0.012 245);
+  --popover-foreground: oklch(0.94 0.012 245);
+  --sidebar-foreground: oklch(0.94 0.012 245);
+
+  /* Chroma pulled to 0.205 so the accent stays inside sRGB instead of clipping. */
+  --primary: oklch(0.58 0.205 262);
+  --primary-foreground: oklch(0.99 0.002 245);
+
+  --secondary: oklch(0.215 0.038 245);
+  --secondary-foreground: oklch(0.94 0.012 245);
+
+  --muted: oklch(0.225 0.038 245);
+  --muted-foreground: oklch(0.645 0.035 245);
+
+  --accent: oklch(0.255 0.052 250);
+  --accent-foreground: oklch(0.94 0.012 245);
+
+  --destructive: oklch(0.66 0.19 25);
+  --destructive-foreground: oklch(0.99 0.002 245);
+  --success: oklch(0.72 0.15 158);
+  --success-foreground: oklch(0.16 0.03 158);
+  --warning: oklch(0.79 0.14 78);
+  --warning-foreground: oklch(0.18 0.03 78);
+  --info: oklch(0.7 0.16 245);
+  --info-foreground: oklch(0.16 0.03 245);
+
+  /*
+   * Solid rather than the original 40%/50% alpha: structure now leans on
+   * borders instead of glass, so they must hold up on every surface in the
+   * ladder, not just the darkest one.
+   */
+  --border: oklch(0.305 0.038 245);
+  --input: oklch(0.325 0.04 245);
+  --ring: oklch(0.58 0.205 262);
+
+  --chart-1: oklch(0.62 0.19 262);
+  --chart-2: oklch(0.66 0.15 240);
+  --chart-3: oklch(0.72 0.12 220);
+  --chart-4: oklch(0.56 0.19 285);
+  --chart-5: oklch(0.76 0.1 250);
+
+  --sidebar-primary: oklch(0.58 0.205 262);
+  --sidebar-primary-foreground: oklch(0.99 0.002 245);
+  --sidebar-accent: oklch(0.245 0.048 250);
+  --sidebar-accent-foreground: oklch(0.94 0.012 245);
+  --sidebar-border: oklch(0.305 0.038 245);
+  --sidebar-ring: oklch(0.58 0.205 262);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+
+  /* Selection follows the accent rather than the browser default blue. */
+  ::selection {
+    background-color: color-mix(in oklch, var(--primary) 28%, transparent);
+  }
+
   html {
     @apply font-sans;
   }
+
+  /* Headings stay tight; size carries hierarchy, not weight. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply tracking-tight;
+    text-wrap: balance;
+  }
 }
 
-/* Glass/Blur effect utility classes */
 @layer utilities {
-  .glass {
-    background: oklch(1 0 0 / 5%);
-    backdrop-filter: blur(12px) saturate(1.5);
-    -webkit-backdrop-filter: blur(12px) saturate(1.5);
-    border: 1px solid oklch(1 0 0 / 10%);
+  /* Aligns digits in columns, counts, and metrics. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
   }
 
-  .glass-light {
-    background: oklch(1 0 0 / 50%);
-    backdrop-filter: blur(16px) saturate(1.4);
-    -webkit-backdrop-filter: blur(16px) saturate(1.4);
-    border: 1px solid oklch(0.7 0.04 225 / 30%);
+  /* Hides scrollbars on internal scrollers while keeping them scrollable. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
-
-  .glass-strong {
-    background: oklch(0.2 0.05 250 / 40%);
-    backdrop-filter: blur(24px) saturate(1.8);
-    -webkit-backdrop-filter: blur(24px) saturate(1.8);
-    border: 1px solid oklch(0.5 0.15 255 / 20%);
-  }
-
-  .glass-card {
-    background: oklch(0.15 0.04 248 / 50%);
-    backdrop-filter: blur(20px) saturate(1.6);
-    -webkit-backdrop-filter: blur(20px) saturate(1.6);
-    border: 1px solid oklch(0.4 0.1 255 / 15%);
-    box-shadow: 0 8px 32px oklch(0.1 0.05 250 / 30%);
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

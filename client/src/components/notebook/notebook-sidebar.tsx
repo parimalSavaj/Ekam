@@ -5,7 +5,12 @@ import { useSources, useDeleteSource } from "@/hooks/use-sources";
 import { useConversations, useDeleteConversation } from "@/hooks/use-conversations";
 import { toast } from "@/components/ui/toast";
 import { SourceItem } from "./source-item";
-import { Plus, FileText, MessageSquare, Settings, ChevronRight, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { pluralize, relativeTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Plus, Settings, ChevronRight, Trash2 } from "lucide-react";
 
 const MAX_VISIBLE_SOURCES = 5;
 const MAX_VISIBLE_CONVERSATIONS = 8;
@@ -34,13 +39,18 @@ export function NotebookSidebar({
   onNewChat,
 }: NotebookSidebarProps) {
   const { data: sources = [], isLoading: sourcesLoading } = useSources(notebookId);
-  const { data: conversations = [], isLoading: conversationsLoading } = useConversations(notebookId);
+  const { data: conversations = [], isLoading: conversationsLoading } =
+    useConversations(notebookId);
   const deleteMutation = useDeleteSource(notebookId);
   const deleteConversationMutation = useDeleteConversation(notebookId);
 
   const visibleSources = sources.slice(0, MAX_VISIBLE_SOURCES);
   const hasMoreSources = sources.length > MAX_VISIBLE_SOURCES;
   const visibleConversations = conversations.slice(0, MAX_VISIBLE_CONVERSATIONS);
+  const readyCount = sources.filter((s) => s.status === "completed").length;
+  const processingCount = sources.filter(
+    (s) => s.status === "pending" || s.status === "processing"
+  ).length;
 
   const handleDeleteSource = (id: string) => {
     deleteMutation.mutate(id, {
@@ -56,8 +66,7 @@ export function NotebookSidebar({
     });
   };
 
-  const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
+  const handleDeleteConversation = (id: string) => {
     deleteConversationMutation.mutate(id, {
       onSuccess: () => {
         if (activeConversationId === id) {
@@ -75,51 +84,50 @@ export function NotebookSidebar({
   };
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Sources section */}
-      <div className="flex flex-col border-b border-white/20 p-3 dark:border-white/10">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <FileText className="h-3.5 w-3.5 text-[#0d2847]/50 dark:text-white/40" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#0d2847]/50 dark:text-white/40">
-              Sources
-            </span>
-            {sources.length > 0 && (
-              <span className="rounded-full bg-[#0d2847]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#0d2847]/60 dark:bg-white/10 dark:text-white/50">
-                {sources.length}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onAddSource}
-            className="rounded-md p-1 text-[#0d2847]/50 transition-colors hover:bg-[#0d2847]/5 hover:text-[#0d2847] dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white"
-            title="Add source"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Notebook identity */}
+      <div className="flex items-start gap-2.5 border-b px-3 py-3">
+        <span
+          aria-hidden="true"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-background text-sm"
+        >
+          {notebook.emoji || "📓"}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{notebook.title}</p>
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground tnum">
+            {processingCount > 0
+              ? `${readyCount} ready · ${processingCount} processing`
+              : pluralize(readyCount, "source")}
+          </p>
         </div>
+      </div>
 
-        {/* Sources list */}
+      {/* Sources */}
+      <div className="flex flex-col px-2 pt-3">
+        <SectionHeader
+          label="Sources"
+          count={sources.length}
+          actionLabel="Add source"
+          onAction={onAddSource}
+        />
+
         {sourcesLoading ? (
-          <div className="space-y-1.5">
-            {[1, 2].map((i) => (
-              <div
-                key={i}
-                className="h-12 animate-pulse rounded-lg bg-[#0d2847]/5 dark:bg-white/5"
-              />
-            ))}
+          <div className="space-y-1 px-1">
+            <Skeleton className="h-11 rounded-md" />
+            <Skeleton className="h-11 rounded-md" />
           </div>
         ) : sources.length === 0 ? (
           <button
             onClick={onAddSource}
-            className="flex items-center gap-2 rounded-lg border border-dashed border-[#0d2847]/15 px-3 py-3 text-xs text-[#0d2847]/50 transition-colors hover:border-[#0d2847]/30 hover:bg-[#0d2847]/5 dark:border-white/10 dark:text-white/40 dark:hover:border-white/20 dark:hover:bg-white/5"
+            className="mx-1 flex items-center justify-center gap-1.5 rounded-md border border-dashed py-2.5 text-xs text-muted-foreground transition-colors outline-none hover:border-foreground/25 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="size-3.5" />
             Add your first source
           </button>
         ) : (
           <>
-            <div className="space-y-1">
+            <div className="space-y-px">
               {visibleSources.map((source) => (
                 <SourceItem
                   key={source.id}
@@ -130,103 +138,120 @@ export function NotebookSidebar({
               ))}
             </div>
 
-            {/* View all link */}
             {hasMoreSources && (
               <button
                 onClick={onViewAllSources}
-                className="mt-2 flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-[#0d2847]/50 transition-colors hover:bg-[#0d2847]/5 hover:text-[#0d2847] dark:text-white/40 dark:hover:bg-white/5 dark:hover:text-white"
+                className="mt-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
               >
-                View all {sources.length} sources
-                <ChevronRight className="h-3 w-3" />
+                View all {sources.length}
+                <ChevronRight className="size-3" />
               </button>
             )}
           </>
         )}
       </div>
 
-      {/* Chat history section */}
-      <div className="flex flex-1 flex-col overflow-hidden border-b border-white/20 p-3 dark:border-white/10">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <MessageSquare className="h-3.5 w-3.5 text-[#0d2847]/50 dark:text-white/40" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#0d2847]/50 dark:text-white/40">
-              Chat History
-            </span>
-            {conversations.length > 0 && (
-              <span className="rounded-full bg-[#0d2847]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#0d2847]/60 dark:bg-white/10 dark:text-white/50">
-                {conversations.length}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onNewChat}
-            className="rounded-md p-1 text-[#0d2847]/50 transition-colors hover:bg-[#0d2847]/5 hover:text-[#0d2847] dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white"
-            title="New chat"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
+      {/* Chats */}
+      <div className="mt-4 flex min-h-0 flex-1 flex-col px-2">
+        <SectionHeader
+          label="Chats"
+          count={conversations.length}
+          actionLabel="New chat"
+          onAction={onNewChat}
+        />
 
-        {/* Conversations list */}
-        <div className="flex-1 overflow-y-auto">
-          {conversationsLoading ? (
-            <div className="space-y-1.5">
-              {[1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="h-9 animate-pulse rounded-lg bg-[#0d2847]/5 dark:bg-white/5"
-                />
-              ))}
-            </div>
-          ) : conversations.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center py-4">
-              <p className="text-xs text-[#0d2847]/30 dark:text-white/20">
-                No conversations yet
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-0.5">
-              {visibleConversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  onClick={() => onSelectConversation(conv.id)}
-                  className={`group flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
-                    activeConversationId === conv.id
-                      ? "bg-[#0d2847]/10 dark:bg-white/10"
-                      : "hover:bg-[#0d2847]/5 dark:hover:bg-white/5"
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium text-[#0d2847] dark:text-white">
-                      {conv.title || "Untitled chat"}
-                    </p>
-                    <p className="text-[10px] text-[#0d2847]/40 dark:text-white/30">
-                      {conv.messageCount} msgs
-                    </p>
-                  </div>
+        {conversationsLoading ? (
+          <div className="space-y-1 px-1">
+            <Skeleton className="h-8 rounded-md" />
+            <Skeleton className="h-8 rounded-md" />
+          </div>
+        ) : conversations.length === 0 ? (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+            No chats yet.
+          </p>
+        ) : (
+          <div className="no-scrollbar min-h-0 flex-1 space-y-px overflow-y-auto pb-2">
+            {visibleConversations.map((conv) => {
+              const isActive = activeConversationId === conv.id;
+              return (
+                <div key={conv.id} className="group/conv relative">
                   <button
-                    onClick={(e) => handleDeleteConversation(e, conv.id)}
-                    className="rounded p-0.5 text-[#0d2847]/20 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100 dark:text-white/20 dark:hover:text-red-400"
+                    onClick={() => onSelectConversation(conv.id)}
+                    aria-current={isActive ? "true" : undefined}
+                    className={cn(
+                      "w-full rounded-md py-1.5 pr-8 pl-2 text-left transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                      isActive
+                        ? "bg-accent text-accent-foreground"
+                        : "hover:bg-accent/60"
+                    )}
                   >
-                    <Trash2 className="h-3 w-3" />
+                    <span className="block truncate text-xs font-medium">
+                      {conv.title || "Untitled chat"}
+                    </span>
+                    <span className="mt-px block truncate text-[10px] text-muted-foreground tnum">
+                      {conv.messageCount} · {relativeTime(conv.updatedAt)}
+                    </span>
                   </button>
+
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`Delete ${conv.title || "untitled chat"}`}
+                    onClick={() => handleDeleteConversation(conv.id)}
+                    className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover/conv:opacity-100"
+                  >
+                    <Trash2 />
+                  </Button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Settings — pinned at bottom */}
-      <div className="p-3">
+      {/* Footer */}
+      <div className="border-t p-2">
         <button
           onClick={onOpenSettings}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-[#0d2847]/50 transition-colors hover:bg-[#0d2847]/5 hover:text-[#0d2847]/70 dark:text-white/40 dark:hover:bg-white/5 dark:hover:text-white/60"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <Settings className="h-4 w-4" />
+          <Settings className="size-3.5" />
           Settings
         </button>
       </div>
+    </div>
+  );
+}
+
+function SectionHeader({
+  label,
+  count,
+  actionLabel,
+  onAction,
+}: {
+  label: string;
+  count: number;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="flex h-6 items-center justify-between gap-2 px-2">
+      <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
+        {label}
+        {count > 0 && <span className="ml-1.5 tnum opacity-60">{count}</span>}
+      </span>
+
+      <Tooltip>
+        <TooltipTrigger
+          render={<Button variant="ghost" size="icon-xs" />}
+          onClick={onAction}
+          aria-label={actionLabel}
+          className="-mr-1 text-muted-foreground"
+        >
+          <Plus />
+        </TooltipTrigger>
+        <TooltipContent>{actionLabel}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

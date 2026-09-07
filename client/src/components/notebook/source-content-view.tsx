@@ -3,30 +3,25 @@
 import { useMemo, useState } from "react";
 import { useSourceContent } from "@/hooks/use-sources";
 import { SourceChunk } from "@/lib/api";
+import { SourceTypeIcon } from "./source-icons";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  ArrowLeft,
-  FileText,
-  Hash,
-  File,
-  Globe,
-  Film,
-  Loader2,
-  AlertCircle,
-} from "lucide-react";
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { ArrowLeft, FileText, AlertCircle } from "lucide-react";
 
 interface SourceContentViewProps {
   notebookId: string;
   sourceId: string;
   onBack: () => void;
 }
-
-const typeIcons = {
-  text: FileText,
-  markdown: Hash,
-  pdf: File,
-  url: Globe,
-  youtube: Film,
-} as const;
 
 /**
  * A rendered piece of the full content. `chunk` is set when the segment maps to
@@ -144,37 +139,53 @@ function buildSegments(content: string, chunks: SourceChunk[]): ContentSegment[]
   return segments;
 }
 
-export function SourceContentView({ notebookId, sourceId, onBack }: SourceContentViewProps) {
+export function SourceContentView({
+  notebookId,
+  sourceId,
+  onBack,
+}: SourceContentViewProps) {
   const { data, isLoading, isError, error } = useSourceContent(notebookId, sourceId);
   const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
 
-  const segments = useMemo(() => {
-    if (!data?.content) return [];
-    return buildSegments(data.content, data.chunks);
-  }, [data?.content, data?.chunks]);
+  // Read these into locals so the memo dependencies match exactly what the
+  // callback reads (optional-chained deps confuse the compiler's inference).
+  const content = data?.content ?? null;
+  const chunks = data?.chunks;
 
-  const TypeIcon = data ? typeIcons[data.type] ?? FileText : FileText;
+  const segments = useMemo(() => {
+    if (!content) return [];
+    return buildSegments(content, chunks ?? []);
+  }, [content, chunks]);
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-white/20 px-6 py-4 dark:border-white/10">
-        <button
-          onClick={onBack}
-          className="rounded-lg p-1.5 text-[#0d2847]/50 transition-colors hover:bg-[#0d2847]/5 hover:text-[#0d2847] dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white"
-          title="Back"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#0d2847]/5 dark:bg-white/10">
-          <TypeIcon className="h-4.5 w-4.5 text-[#0d2847]/60 dark:text-white/60" />
-        </div>
+      <div className="flex flex-shrink-0 items-center gap-3 border-b px-6 py-3.5">
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-sm" />}
+            onClick={onBack}
+            aria-label="Back to all sources"
+          >
+            <ArrowLeft />
+          </TooltipTrigger>
+          <TooltipContent>Back to all sources</TooltipContent>
+        </Tooltip>
+
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-card text-muted-foreground">
+          {data ? (
+            <SourceTypeIcon type={data.type} className="size-4" />
+          ) : (
+            <FileText className="size-4" />
+          )}
+        </span>
+
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-base font-semibold text-[#0d2847] dark:text-white">
+          <h2 className="truncate font-heading text-base font-semibold tracking-tight">
             {data?.title ?? "Source"}
           </h2>
           {data && (
-            <p className="text-xs text-[#0d2847]/50 dark:text-white/40">
+            <p className="text-xs text-muted-foreground">
               {data.chunkCount} {data.chunkCount === 1 ? "chunk" : "chunks"} ·{" "}
               {data.charCount.toLocaleString()} chars
             </p>
@@ -183,36 +194,56 @@ export function SourceContentView({ notebookId, sourceId, onBack }: SourceConten
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-[#0d2847]/40 dark:text-white/30">
-            <Loader2 className="h-5 w-5 animate-spin" />
+          <div className="mx-auto max-w-3xl space-y-3">
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-20 w-full rounded-lg" />
+            <Skeleton className="h-28 w-full rounded-lg" />
+            <Skeleton className="h-16 w-full rounded-lg" />
           </div>
         ) : isError ? (
-          <div className="mx-auto flex max-w-md flex-col items-center gap-2 py-16 text-center">
-            <AlertCircle className="h-6 w-6 text-red-500" />
-            <p className="text-sm font-medium text-[#0d2847] dark:text-white">
-              Could not load source content
-            </p>
-            <p className="text-xs text-[#0d2847]/50 dark:text-white/40">
-              {error instanceof Error ? error.message : "Something went wrong"}
-            </p>
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia
+                variant="icon"
+                className="size-11 rounded-xl bg-destructive/10 text-destructive"
+              >
+                <AlertCircle className="size-5" />
+              </EmptyMedia>
+              <EmptyTitle className="text-base">
+                Could not load source content
+              </EmptyTitle>
+              <EmptyDescription>
+                {error instanceof Error ? error.message : "Something went wrong"}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : !data?.content ? (
-          <div className="flex flex-col items-center gap-2 py-16 text-center">
-            <FileText className="h-6 w-6 text-[#0d2847]/30 dark:text-white/20" />
-            <p className="text-sm text-[#0d2847]/50 dark:text-white/40">
-              {data && data.status !== "completed"
-                ? "This source is still processing. Content will appear once it's ready."
-                : "No content available for this source."}
-            </p>
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon" className="size-11 rounded-xl">
+                <FileText className="size-5" />
+              </EmptyMedia>
+              <EmptyTitle className="text-base">
+                {data && data.status !== "completed"
+                  ? "Still processing"
+                  : "No content available"}
+              </EmptyTitle>
+              <EmptyDescription>
+                {data && data.status !== "completed"
+                  ? "This source is still being processed. Content will appear once it's ready."
+                  : "There's no readable content stored for this source."}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div className="mx-auto max-w-3xl">
-            <p className="mb-4 text-xs text-[#0d2847]/40 dark:text-white/30">
+            <p className="mb-4 text-xs text-muted-foreground">
               Hover over the text to highlight the chunk it belongs to.
             </p>
-            <div className="text-sm leading-relaxed text-[#0d2847]/90 dark:text-white/80">
+
+            <div className="text-sm leading-relaxed text-foreground/90">
               {segments.map((seg) =>
                 seg.chunk ? (
                   <div
@@ -220,13 +251,16 @@ export function SourceContentView({ notebookId, sourceId, onBack }: SourceConten
                     data-chunk-id={seg.chunk.id}
                     onMouseEnter={() => setHoveredChunkId(seg.chunk!.id)}
                     onMouseLeave={() =>
-                      setHoveredChunkId((prev) => (prev === seg.chunk!.id ? null : prev))
+                      setHoveredChunkId((prev) =>
+                        prev === seg.chunk!.id ? null : prev
+                      )
                     }
-                    className={`relative cursor-pointer whitespace-pre-wrap break-words rounded-lg border px-3 py-2 transition-colors ${
+                    className={cn(
+                      "relative cursor-pointer rounded-lg border px-3 py-2 whitespace-pre-wrap break-words transition-colors",
                       hoveredChunkId === seg.chunk.id
                         ? "border-primary/60 bg-primary/10 text-foreground"
                         : "border-transparent"
-                    }`}
+                    )}
                   >
                     {/* Chunk-number popup */}
                     {hoveredChunkId === seg.chunk.id && (
@@ -237,7 +271,10 @@ export function SourceContentView({ notebookId, sourceId, onBack }: SourceConten
                     {seg.text}
                   </div>
                 ) : (
-                  <div key={seg.key} className="whitespace-pre-wrap break-words px-3">
+                  <div
+                    key={seg.key}
+                    className="px-3 whitespace-pre-wrap break-words"
+                  >
                     {seg.text}
                   </div>
                 )

@@ -1,35 +1,48 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import { useCreateSource, useUploadPdfSource } from "@/hooks/use-sources";
 import { toast } from "@/components/ui/toast";
-import { FileText, Hash, File, Globe, Film, X, Upload } from "lucide-react";
+import { Source } from "@/lib/api";
+import { sourceTypeLabels } from "@/lib/source-meta";
+import { SourceTypeIcon } from "./source-icons";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ArrowLeft, Upload } from "lucide-react";
 
 interface AddSourceDialogProps {
   notebookId: string;
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-type SourceTypeOption = {
-  id: string;
-  label: string;
-  icon: typeof FileText;
-  available: boolean;
-  description: string;
-};
-
-const sourceTypes: SourceTypeOption[] = [
-  { id: "text", label: "Text", icon: FileText, available: true, description: "Paste plain text content" },
-  { id: "markdown", label: "Markdown", icon: Hash, available: true, description: "Paste markdown content" },
-  { id: "pdf", label: "PDF", icon: File, available: true, description: "Upload a PDF file" },
-  { id: "url", label: "Website URL", icon: Globe, available: true, description: "Scrape a webpage" },
-  { id: "youtube", label: "YouTube", icon: Film, available: true, description: "Import video transcript" },
+const sourceTypeOptions: { id: Source["type"]; description: string }[] = [
+  { id: "text", description: "Paste plain text" },
+  { id: "markdown", description: "Paste Markdown" },
+  { id: "pdf", description: "Upload a PDF file" },
+  { id: "url", description: "Scrape a web page" },
+  { id: "youtube", description: "Import a transcript" },
 ];
 
-export function AddSourceDialog({ notebookId, onClose }: AddSourceDialogProps) {
+export function AddSourceDialog({
+  notebookId,
+  open,
+  onOpenChange,
+}: AddSourceDialogProps) {
   const createMutation = useCreateSource(notebookId);
   const uploadPdfMutation = useUploadPdfSource(notebookId);
-  const [selectedType, setSelectedType] = useState<string | null>(null);
+
+  const [selectedType, setSelectedType] = useState<Source["type"] | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [url, setUrl] = useState("");
@@ -38,6 +51,20 @@ export function AddSourceDialog({ notebookId, onClose }: AddSourceDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isPending = createMutation.isPending || uploadPdfMutation.isPending;
+
+  const resetForm = () => {
+    setSelectedType(null);
+    setTitle("");
+    setContent("");
+    setUrl("");
+    setYoutubeUrl("");
+    setPdfFile(null);
+  };
+
+  const close = () => {
+    onOpenChange(false);
+    resetForm();
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +80,7 @@ export function AddSourceDialog({ notebookId, onClose }: AddSourceDialogProps) {
         {
           onSuccess: () => {
             toast.add({ title: "PDF uploaded successfully", type: "success" });
-            onClose();
+            close();
           },
           onError: (err) => {
             toast.add({
@@ -78,7 +105,7 @@ export function AddSourceDialog({ notebookId, onClose }: AddSourceDialogProps) {
         {
           onSuccess: () => {
             toast.add({ title: "Source added successfully", type: "success" });
-            onClose();
+            close();
           },
           onError: (err) => {
             toast.add({
@@ -102,12 +129,18 @@ export function AddSourceDialog({ notebookId, onClose }: AddSourceDialogProps) {
         },
         {
           onSuccess: () => {
-            toast.add({ title: "YouTube transcript added successfully", type: "success" });
-            onClose();
+            toast.add({
+              title: "YouTube transcript added successfully",
+              type: "success",
+            });
+            close();
           },
           onError: (err) => {
             toast.add({
-              title: err instanceof Error ? err.message : "Failed to fetch YouTube transcript",
+              title:
+                err instanceof Error
+                  ? err.message
+                  : "Failed to fetch YouTube transcript",
               type: "error",
             });
           },
@@ -127,7 +160,7 @@ export function AddSourceDialog({ notebookId, onClose }: AddSourceDialogProps) {
       {
         onSuccess: () => {
           toast.add({ title: "Source added successfully", type: "success" });
-          onClose();
+          close();
         },
         onError: (err) => {
           toast.add({
@@ -149,95 +182,110 @@ export function AddSourceDialog({ notebookId, onClose }: AddSourceDialogProps) {
     }
   };
 
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="mx-4 w-full max-w-lg rounded-2xl border border-white/20 bg-white/95 p-6 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0d2847]/95"
-      >
-        {/* Header */}
-        <div className="mb-5 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-[#0d2847] dark:text-white">
-            {selectedType ? "Add Source" : "Choose Source Type"}
-          </h3>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-[#0d2847]/40 transition-colors hover:bg-[#0d2847]/5 dark:text-white/40 dark:hover:bg-white/10"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+  const isSubmitDisabled =
+    isPending ||
+    (selectedType === "pdf"
+      ? !pdfFile
+      : selectedType === "url"
+        ? !url.trim()
+        : selectedType === "youtube"
+          ? !youtubeUrl.trim()
+          : !title.trim() || !content.trim());
 
-        {/* Type selection */}
+  const titleOptional =
+    selectedType === "url" || selectedType === "pdf" || selectedType === "youtube";
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        onOpenChange(nextOpen);
+        if (!nextOpen) resetForm();
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {selectedType
+              ? `Add ${sourceTypeLabels[selectedType]} source`
+              : "Add a source"}
+          </DialogTitle>
+          <DialogDescription>
+            {selectedType
+              ? "Once added, the source is processed and indexed so you can ask questions about it."
+              : "Choose where this source is coming from."}
+          </DialogDescription>
+        </DialogHeader>
+
         {!selectedType ? (
-          <div className="grid grid-cols-2 gap-3">
-            {sourceTypes.map((type) => (
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {sourceTypeOptions.map((option) => (
               <button
-                key={type.id}
-                onClick={() => type.available && setSelectedType(type.id)}
-                disabled={!type.available}
-                className={`flex flex-col items-center gap-2 rounded-xl border p-4 transition-all ${
-                  type.available
-                    ? "border-[#0d2847]/10 hover:border-[#0d2847]/30 hover:bg-[#0d2847]/5 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/5"
-                    : "cursor-not-allowed border-[#0d2847]/5 opacity-40 dark:border-white/5"
-                }`}
+                key={option.id}
+                onClick={() => setSelectedType(option.id)}
+                className="flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-colors outline-none hover:border-primary/40 hover:bg-primary/5 focus-visible:ring-3 focus-visible:ring-ring/50"
               >
-                <div className={`rounded-lg p-2 ${type.available ? "bg-[#0d2847]/5 dark:bg-white/10" : "bg-[#0d2847]/3 dark:bg-white/5"}`}>
-                  <type.icon className={`h-5 w-5 ${type.available ? "text-[#0d2847]/70 dark:text-white/70" : "text-[#0d2847]/30 dark:text-white/20"}`} />
-                </div>
-                <span className={`text-sm font-medium ${type.available ? "text-[#0d2847] dark:text-white" : "text-[#0d2847]/40 dark:text-white/30"}`}>
-                  {type.label}
+                <span className="flex size-8 items-center justify-center rounded-md border bg-muted/50 text-muted-foreground">
+                  <SourceTypeIcon type={option.id} className="size-4" />
                 </span>
-                <span className="text-xs text-[#0d2847]/40 dark:text-white/30">
-                  {type.description}
+                <span className="text-sm font-medium">
+                  {sourceTypeLabels[option.id]}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {option.description}
                 </span>
               </button>
             ))}
           </div>
         ) : (
-          /* Content form */
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Back button */}
-            <button
+          <form onSubmit={handleSubmit} className="grid gap-4">
+            <Button
               type="button"
-              onClick={() => { setSelectedType(null); setUrl(""); setYoutubeUrl(""); setPdfFile(null); }}
-              className="text-xs font-medium text-[#0d2847]/50 transition-colors hover:text-[#0d2847] dark:text-white/40 dark:hover:text-white"
+              variant="ghost"
+              size="xs"
+              className="-mt-1 w-fit text-muted-foreground"
+              onClick={() => {
+                setSelectedType(null);
+                setUrl("");
+                setYoutubeUrl("");
+                setPdfFile(null);
+              }}
             >
-              ← Back to types
-            </button>
+              <ArrowLeft />
+              All source types
+            </Button>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-[#0d2847]/70 dark:text-white/60">
+            <div className="grid gap-2">
+              <Label htmlFor="source-title">
                 Title
-              </label>
-              <input
-                type="text"
+                {titleOptional && (
+                  <span className="font-normal text-muted-foreground">optional</span>
+                )}
+              </Label>
+              <Input
+                id="source-title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                className="h-9"
                 placeholder={
                   selectedType === "url"
-                    ? "e.g. Blog Post Title (optional, auto-detected)"
+                    ? "Auto-detected from the page"
                     : selectedType === "pdf"
-                    ? "e.g. Research Paper (optional, uses filename)"
-                    : selectedType === "youtube"
-                    ? "e.g. Video Title (optional)"
-                    : "e.g. Research Notes, Meeting Minutes..."
+                      ? "Defaults to the file name"
+                      : selectedType === "youtube"
+                        ? "Auto-detected from the video"
+                        : "e.g. Research notes"
                 }
-                className="w-full rounded-xl border border-[#0d2847]/10 bg-white/50 px-4 py-2.5 text-sm text-[#0d2847] placeholder:text-[#0d2847]/30 focus:border-[#0d2847]/30 focus:outline-none focus:ring-2 focus:ring-[#0d2847]/10 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/30 dark:focus:border-white/20 dark:focus:ring-white/10"
-                autoFocus={selectedType !== "url" && selectedType !== "pdf" && selectedType !== "youtube"}
-                required={selectedType !== "url" && selectedType !== "pdf" && selectedType !== "youtube"}
+                autoFocus={!titleOptional}
+                required={!titleOptional}
               />
             </div>
 
             {selectedType === "pdf" ? (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-[#0d2847]/70 dark:text-white/60">
-                  PDF File
-                </label>
+              <div className="grid gap-2">
+                <Label htmlFor="source-pdf">PDF file</Label>
                 <input
+                  id="source-pdf"
                   ref={fileInputRef}
                   type="file"
                   accept=".pdf,application/pdf"
@@ -247,99 +295,88 @@ export function AddSourceDialog({ notebookId, onClose }: AddSourceDialogProps) {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#0d2847]/15 bg-white/30 px-4 py-6 text-sm transition-colors hover:border-[#0d2847]/30 hover:bg-[#0d2847]/5 dark:border-white/15 dark:bg-white/5 dark:hover:border-white/25 dark:hover:bg-white/10"
+                  className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-7 text-sm transition-colors outline-none hover:border-primary/40 hover:bg-primary/5 focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
-                  <Upload className="h-5 w-5 text-[#0d2847]/50 dark:text-white/50" />
-                  <span className="text-[#0d2847]/60 dark:text-white/50">
+                  <Upload className="size-5 text-muted-foreground" />
+                  <span className={pdfFile ? "font-medium" : "text-muted-foreground"}>
                     {pdfFile ? pdfFile.name : "Click to select a PDF file"}
                   </span>
+                  <span className="text-xs text-muted-foreground">
+                    {pdfFile
+                      ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB · Max 20MB`
+                      : "Max 20MB"}
+                  </span>
                 </button>
-                {pdfFile && (
-                  <p className="mt-1 text-xs text-[#0d2847]/40 dark:text-white/30">
-                    {(pdfFile.size / 1024 / 1024).toFixed(2)} MB • Max 20MB
-                  </p>
-                )}
               </div>
             ) : selectedType === "url" ? (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-[#0d2847]/70 dark:text-white/60">
-                  URL
-                </label>
-                <input
+              <div className="grid gap-2">
+                <Label htmlFor="source-url">URL</Label>
+                <Input
+                  id="source-url"
                   type="url"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder="https://example.com/article"
-                  className="w-full rounded-xl border border-[#0d2847]/10 bg-white/50 px-4 py-2.5 text-sm text-[#0d2847] placeholder:text-[#0d2847]/30 focus:border-[#0d2847]/30 focus:outline-none focus:ring-2 focus:ring-[#0d2847]/10 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/30 dark:focus:border-white/20 dark:focus:ring-white/10"
+                  className="h-9"
                   autoFocus
                   required
                 />
-                <p className="mt-1 text-xs text-[#0d2847]/40 dark:text-white/30">
-                  The page will be scraped and its content indexed for search
+                <p className="text-xs text-muted-foreground">
+                  The page will be scraped and its content indexed for search.
                 </p>
               </div>
             ) : selectedType === "youtube" ? (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-[#0d2847]/70 dark:text-white/60">
-                  YouTube URL
-                </label>
-                <input
+              <div className="grid gap-2">
+                <Label htmlFor="source-youtube">YouTube URL</Label>
+                <Input
+                  id="source-youtube"
                   type="url"
                   value={youtubeUrl}
                   onChange={(e) => setYoutubeUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  className="w-full rounded-xl border border-[#0d2847]/10 bg-white/50 px-4 py-2.5 text-sm text-[#0d2847] placeholder:text-[#0d2847]/30 focus:border-[#0d2847]/30 focus:outline-none focus:ring-2 focus:ring-[#0d2847]/10 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/30 dark:focus:border-white/20 dark:focus:ring-white/10"
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  className="h-9"
                   autoFocus
                   required
                 />
-                <p className="mt-1 text-xs text-[#0d2847]/40 dark:text-white/30">
-                  The video transcript will be fetched and indexed for search
+                <p className="text-xs text-muted-foreground">
+                  The video transcript will be fetched and indexed for search.
                 </p>
               </div>
             ) : (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-[#0d2847]/70 dark:text-white/60">
-                  Content
-                </label>
-                <textarea
+              <div className="grid gap-2">
+                <Label htmlFor="source-content">Content</Label>
+                <Textarea
+                  id="source-content"
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder={selectedType === "markdown" ? "Paste your markdown content here..." : "Paste your text content here..."}
+                  placeholder={
+                    selectedType === "markdown"
+                      ? "Paste your Markdown content here…"
+                      : "Paste your text content here…"
+                  }
                   rows={8}
-                  className="w-full resize-none rounded-xl border border-[#0d2847]/10 bg-white/50 px-4 py-2.5 font-mono text-sm text-[#0d2847] placeholder:text-[#0d2847]/30 focus:border-[#0d2847]/30 focus:outline-none focus:ring-2 focus:ring-[#0d2847]/10 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/30 dark:focus:border-white/20 dark:focus:ring-white/10"
+                  className="max-h-72 min-h-40 resize-none font-mono text-xs"
                   required
                 />
-                <p className="mt-1 text-xs text-[#0d2847]/40 dark:text-white/30">
-                  {content.length > 0 ? `${content.length.toLocaleString()} characters` : "Max 500,000 characters"}
+                <p className="text-xs text-muted-foreground">
+                  {content.length > 0
+                    ? `${content.length.toLocaleString()} characters`
+                    : "Max 500,000 characters"}
                 </p>
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl px-4 py-2.5 text-sm font-medium text-[#0d2847]/70 transition-colors hover:bg-[#0d2847]/5 dark:text-white/60 dark:hover:bg-white/5"
-              >
+            <DialogFooter>
+              <Button type="button" variant="outline" size="lg" onClick={close}>
                 Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={
-                  isPending ||
-                  (selectedType === "pdf" ? !pdfFile :
-                  selectedType === "url" ? !url.trim() :
-                  selectedType === "youtube" ? !youtubeUrl.trim() :
-                  (!title.trim() || !content.trim()))
-                }
-                className="rounded-xl bg-[#0d2847] px-5 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 dark:bg-white/10 dark:hover:bg-white/15"
-              >
-                {isPending ? "Uploading..." : "Add Source"}
-              </button>
-            </div>
+              </Button>
+              <Button type="submit" size="lg" disabled={isSubmitDisabled}>
+                {isPending ? "Adding…" : "Add source"}
+              </Button>
+            </DialogFooter>
           </form>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

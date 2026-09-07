@@ -5,7 +5,40 @@ import { Notebook, ChatSource, WebSearchResult } from "@/lib/api";
 import { useSources } from "@/hooks/use-sources";
 import { useChat, ChatMessage } from "@/hooks/use-chat";
 import { useConversations, useDeleteConversation } from "@/hooks/use-conversations";
-import { Send, Square, Sparkles, FileText, MessageSquare, Plus, Trash2, Globe, ExternalLink } from "lucide-react";
+import { pluralize, relativeTime } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Kbd } from "@/components/ui/kbd";
+import { toast } from "@/components/ui/toast";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Send,
+  Square,
+  Sparkles,
+  FileText,
+  MessageSquare,
+  Plus,
+  Trash2,
+  Globe,
+  ExternalLink,
+  ArrowLeft,
+  Copy,
+  Check,
+} from "lucide-react";
+
+const SUGGESTED_PROMPTS = [
+  "Summarise the key points",
+  "What are the main themes?",
+  "What's missing or contradictory?",
+];
 
 interface ChatAreaProps {
   notebookId: string;
@@ -14,12 +47,16 @@ interface ChatAreaProps {
   onConversationChange?: (conversationId: string | null) => void;
 }
 
-export function ChatArea({ notebookId, notebook, initialConversationId, onConversationChange }: ChatAreaProps) {
+export function ChatArea({
+  notebookId,
+  notebook,
+  initialConversationId,
+  onConversationChange,
+}: ChatAreaProps) {
   const { data: sources = [] } = useSources(notebookId);
   const {
     messages,
     conversationId,
-    isLoading,
     isStreaming,
     sendMessage,
     stopStreaming,
@@ -27,7 +64,8 @@ export function ChatArea({ notebookId, notebook, initialConversationId, onConver
     startNewConversation,
   } = useChat(notebookId);
 
-  const { data: conversations = [], refetch: refetchConversations } = useConversations(notebookId);
+  const { data: conversations = [], refetch: refetchConversations } =
+    useConversations(notebookId);
   const deleteConversation = useDeleteConversation(notebookId);
 
   const [input, setInput] = useState("");
@@ -79,8 +117,7 @@ export function ChatArea({ notebookId, notebook, initialConversationId, onConver
     }
   }, [isStreaming, conversationId, refetchConversations]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSend = () => {
     if (!input.trim() || !hasSources || isStreaming) return;
     sendMessage(input);
     setInput("");
@@ -91,233 +128,284 @@ export function ChatArea({ notebookId, notebook, initialConversationId, onConver
     setShowHistory(false);
   };
 
-  const handleDeleteConversation = (e: React.MouseEvent, convId: string) => {
-    e.stopPropagation();
+  const handleDeleteConversation = (convId: string) => {
     deleteConversation.mutate(convId);
     if (conversationId === convId) {
       startNewConversation();
     }
   };
 
+  const composer = (
+    <Composer
+      input={input}
+      setInput={setInput}
+      hasSources={hasSources}
+      isStreaming={isStreaming}
+      model={notebook.aiModel}
+      sourceCount={completedSources.length}
+      onSend={handleSend}
+      onStop={stopStreaming}
+    />
+  );
+
   // Empty state — no messages yet
   if (messages.length === 0 && !showHistory) {
     return (
-      <div className="flex flex-1 flex-col">
-        {/* Messages area — empty state */}
-        <div className="flex flex-1 flex-col items-center justify-center px-6">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-8">
           {!hasSources ? (
-            <div className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#0d2847]/5 dark:bg-white/5">
-                <FileText className="h-7 w-7 text-[#0d2847]/30 dark:text-white/30" />
-              </div>
-              <h3 className="text-base font-semibold text-[#0d2847] dark:text-white">
-                Add sources to get started
-              </h3>
-              <p className="mx-auto mt-2 max-w-sm text-sm text-[#0d2847]/50 dark:text-white/40">
-                Add text, documents, or links to your notebook. Once processed, you can ask questions about your sources.
-              </p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon" className="size-10 rounded-lg">
+                  <FileText className="size-4.5" />
+                </EmptyMedia>
+                <EmptyTitle>Add a source to begin</EmptyTitle>
+                <EmptyDescription>
+                  Answers here are drawn only from material you add. Once a source
+                  finishes processing, you can start asking questions.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
-            <div className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#0d2847]/5 dark:bg-white/5">
-                <Sparkles className="h-7 w-7 text-[#0d2847]/30 dark:text-white/30" />
-              </div>
-              <h3 className="text-base font-semibold text-[#0d2847] dark:text-white">
-                Ask anything about your sources
-              </h3>
-              <p className="mx-auto mt-2 max-w-sm text-sm text-[#0d2847]/50 dark:text-white/40">
-                {completedSources.length} {completedSources.length === 1 ? "source" : "sources"} ready.
-                Ask questions and get answers grounded in your content.
-              </p>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon" className="size-10 rounded-lg">
+                  <Sparkles className="size-4.5" />
+                </EmptyMedia>
+                <EmptyTitle>Ask about your sources</EmptyTitle>
+                <EmptyDescription>
+                  {pluralize(completedSources.length, "source")} indexed. Every answer
+                  cites the passages it drew from.
+                </EmptyDescription>
+              </EmptyHeader>
 
-              {/* Suggested prompts */}
-              <div className="mx-auto mt-6 flex max-w-md flex-wrap justify-center gap-2">
-                {["Summarize the key points", "What are the main themes?", "List important details"].map((prompt) => (
-                  <button
-                    key={prompt}
-                    onClick={() => setInput(prompt)}
-                    className="rounded-full border border-[#0d2847]/10 px-3 py-1.5 text-xs text-[#0d2847]/60 transition-colors hover:border-[#0d2847]/30 hover:bg-[#0d2847]/5 dark:border-white/10 dark:text-white/50 dark:hover:border-white/20 dark:hover:bg-white/5"
+              <EmptyContent className="max-w-lg">
+                <div className="grid w-full gap-1.5">
+                  {SUGGESTED_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      onClick={() => setInput(prompt)}
+                      className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors outline-none hover:border-foreground/20 hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <span className="truncate text-foreground/80">{prompt}</span>
+                      <ArrowLeft className="size-3.5 shrink-0 rotate-180 text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+
+                {conversations.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 text-muted-foreground"
+                    onClick={() => setShowHistory(true)}
                   >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-
-              {/* Conversation history button */}
-              {conversations.length > 0 && (
-                <button
-                  onClick={() => setShowHistory(true)}
-                  className="mt-6 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-[#0d2847]/50 transition-colors hover:bg-[#0d2847]/5 dark:text-white/40 dark:hover:bg-white/5"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  {conversations.length} previous {conversations.length === 1 ? "conversation" : "conversations"}
-                </button>
-              )}
-            </div>
+                    <MessageSquare />
+                    {pluralize(conversations.length, "earlier chat")}
+                  </Button>
+                )}
+              </EmptyContent>
+            </Empty>
           )}
         </div>
 
-        {/* Input area */}
-        <ChatInput
-          input={input}
-          setInput={setInput}
-          hasSources={hasSources}
-          isStreaming={isStreaming}
-          onSubmit={handleSubmit}
-          onStop={stopStreaming}
-        />
+        {composer}
       </div>
     );
   }
 
-  // Conversation history view
+  // Conversation history
   if (showHistory) {
     return (
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col overflow-y-auto px-6 py-4">
-          <div className="mx-auto w-full max-w-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#0d2847] dark:text-white">
-                Conversation History
-              </h3>
-              <button
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div className="mx-auto w-full max-w-3xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold tracking-tight">Chats</h2>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowHistory(false)}
-                className="rounded-lg px-3 py-1.5 text-xs text-[#0d2847]/60 transition-colors hover:bg-[#0d2847]/5 dark:text-white/50 dark:hover:bg-white/5"
+                className="text-muted-foreground"
               >
-                ← Back
-              </button>
+                <ArrowLeft />
+                Back
+              </Button>
             </div>
 
-            <button
-              onClick={() => {
-                startNewConversation();
-                setShowHistory(false);
-              }}
-              className="mb-3 flex w-full items-center gap-2 rounded-xl border border-dashed border-[#0d2847]/20 px-4 py-3 text-sm text-[#0d2847]/60 transition-colors hover:border-[#0d2847]/40 hover:bg-[#0d2847]/5 dark:border-white/20 dark:text-white/50 dark:hover:border-white/30 dark:hover:bg-white/5"
-            >
-              <Plus className="h-4 w-4" />
-              New conversation
-            </button>
-
-            {conversations.map((conv) => (
+            <div className="overflow-hidden rounded-xl border bg-card">
               <button
-                key={conv.id}
-                onClick={() => handleConversationClick(conv.id)}
-                className="mb-2 flex w-full items-center justify-between rounded-xl border border-[#0d2847]/10 px-4 py-3 text-left transition-colors hover:bg-[#0d2847]/5 dark:border-white/10 dark:hover:bg-white/5"
+                onClick={() => {
+                  startNewConversation();
+                  setShowHistory(false);
+                }}
+                className="flex w-full items-center gap-2 border-b px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors outline-none hover:bg-muted/40 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-[#0d2847] dark:text-white">
-                    {conv.title || "Untitled conversation"}
-                  </p>
-                  <p className="text-xs text-[#0d2847]/40 dark:text-white/30">
-                    {conv.messageCount} messages · {new Date(conv.updatedAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <button
-                  onClick={(e) => handleDeleteConversation(e, conv.id)}
-                  className="ml-2 rounded-lg p-1.5 text-[#0d2847]/30 transition-colors hover:bg-red-50 hover:text-red-500 dark:text-white/20 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <Plus className="size-3.5" />
+                New chat
               </button>
-            ))}
+
+              {conversations.map((conv) => (
+                <div key={conv.id} className="group/conv relative">
+                  <button
+                    onClick={() => handleConversationClick(conv.id)}
+                    className="flex w-full items-center gap-3 border-b px-3 py-2.5 text-left transition-colors outline-none last:border-b-0 hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {conv.title || "Untitled chat"}
+                      </span>
+                    </span>
+                    <span className="shrink-0 pr-7 text-xs text-muted-foreground tnum">
+                      {conv.messageCount} · {relativeTime(conv.updatedAt)}
+                    </span>
+                  </button>
+
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`Delete ${conv.title || "untitled chat"}`}
+                    onClick={() => handleDeleteConversation(conv.id)}
+                    className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover/conv:opacity-100"
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        <ChatInput
-          input={input}
-          setInput={setInput}
-          hasSources={hasSources}
-          isStreaming={isStreaming}
-          onSubmit={handleSubmit}
-          onStop={stopStreaming}
-        />
+        {composer}
       </div>
     );
   }
 
-  // Active chat view
+  // Active chat
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Messages */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <div className="mx-auto max-w-2xl space-y-4">
-          {/* Header actions */}
-          <div className="flex items-center justify-between">
-            <button
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-4 flex items-center justify-between border-b pb-2.5">
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-muted-foreground"
               onClick={() => setShowHistory(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-[#0d2847]/40 transition-colors hover:bg-[#0d2847]/5 dark:text-white/30 dark:hover:bg-white/5"
             >
-              <MessageSquare className="h-3 w-3" />
-              History
-            </button>
-            <button
+              <MessageSquare />
+              All chats
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-muted-foreground"
               onClick={startNewConversation}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-[#0d2847]/40 transition-colors hover:bg-[#0d2847]/5 dark:text-white/30 dark:hover:bg-white/5"
             >
-              <Plus className="h-3 w-3" />
+              <Plus />
               New chat
-            </button>
+            </Button>
           </div>
 
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))}
+          <div className="space-y-6">
+            {messages.map((msg) => (
+              <MessageRow key={msg.id} message={msg} />
+            ))}
+          </div>
           <div ref={messagesEndRef} />
         </div>
       </div>
 
-      {/* Input area */}
-      <ChatInput
-        input={input}
-        setInput={setInput}
-        hasSources={hasSources}
-        isStreaming={isStreaming}
-        onSubmit={handleSubmit}
-        onStop={stopStreaming}
-      />
+      {composer}
     </div>
   );
 }
 
 // --- Sub-components ---
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageRow({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
 
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-xl rounded-br-sm bg-primary px-3.5 py-2 text-sm leading-relaxed text-primary-foreground">
+          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
-          isUser
-            ? "bg-[#0d2847] text-white dark:bg-white/10"
-            : "bg-[#0d2847]/5 text-[#0d2847] dark:bg-white/5 dark:text-white"
-        }`}
+    <div className="group/msg flex gap-3">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border bg-card text-muted-foreground"
       >
-        {/* Web search results (shown above the response text) */}
-        {!isUser && message.webSearchResults && message.webSearchResults.length > 0 && (
+        <Sparkles className="size-3" />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        {message.webSearchResults && message.webSearchResults.length > 0 && (
           <WebSearchResults searches={message.webSearchResults} />
         )}
 
-        <div className="whitespace-pre-wrap text-sm leading-relaxed">
-          {message.content}
-          {message.isStreaming && (
-            <span className="ml-1 inline-block h-4 w-1.5 animate-pulse bg-current opacity-50" />
-          )}
+        <div className="text-sm leading-relaxed text-foreground/90">
+          <p className="whitespace-pre-wrap break-words">
+            {message.content}
+            {message.isStreaming && (
+              <span className="ml-0.5 inline-block h-3.5 w-px animate-pulse bg-foreground align-middle" />
+            )}
+          </p>
         </div>
 
-        {/* Source citations */}
-        {!isUser && message.sourcesUsed && message.sourcesUsed.length > 0 && !message.isStreaming && (
-          <SourceCitations sources={message.sourcesUsed} />
+        {message.sourcesUsed &&
+          message.sourcesUsed.length > 0 &&
+          !message.isStreaming && <SourceCitations sources={message.sourcesUsed} />}
+
+        {!message.isStreaming && message.content && (
+          <div className="mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100">
+            <CopyButton text={message.content} />
+          </div>
         )}
       </div>
     </div>
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.add({ title: "Couldn't copy to clipboard", type: "error" });
+    }
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<Button variant="ghost" size="icon-xs" />}
+        onClick={handleCopy}
+        aria-label="Copy response"
+        className="text-muted-foreground"
+      >
+        {copied ? <Check className="text-success" /> : <Copy />}
+      </TooltipTrigger>
+      <TooltipContent>{copied ? "Copied" : "Copy response"}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function SourceCitations({ sources }: { sources: ChatSource[] }) {
   // Deduplicate by sourceId — handles both old format (per-chunk) and new format (per-source)
-  const grouped = sources.reduce<Map<string, { title: string; similarity: number; chunkCount: number; content: string }>>((map, src) => {
+  const grouped = sources.reduce<
+    Map<string, { title: string; similarity: number; chunkCount: number; content: string }>
+  >((map, src) => {
     const key = src.sourceId;
     const existing = map.get(key);
     if (!existing) {
@@ -342,57 +430,81 @@ function SourceCitations({ sources }: { sources: ChatSource[] }) {
   const deduplicated = Array.from(grouped.entries());
 
   return (
-    <div className="mt-2 border-t border-[#0d2847]/10 pt-2 dark:border-white/10">
-      <p className="mb-1 text-xs font-medium text-[#0d2847]/40 dark:text-white/30">
-        Sources used
-      </p>
-      <div className="flex flex-wrap gap-1">
-        {deduplicated.map(([sourceId, src], i) => (
-          <span
-            key={sourceId}
-            className="inline-block rounded-md bg-[#0d2847]/10 px-2 py-0.5 text-xs text-[#0d2847]/60 dark:bg-white/10 dark:text-white/40"
-            title={src.content}
-          >
-            {src.title || `Source ${i + 1}`} ({Math.round(src.similarity * 100)}%{src.chunkCount > 1 ? ` · ${src.chunkCount} chunks` : ""})
-          </span>
-        ))}
-      </div>
+    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <span className="text-[11px] text-muted-foreground">Cited</span>
+      {deduplicated.map(([sourceId, src], i) => {
+        const label = src.title || `Source ${i + 1}`;
+        return (
+          <Tooltip key={sourceId}>
+            <TooltipTrigger
+              render={
+                <span className="inline-flex max-w-52 cursor-default items-center gap-1.5 rounded-md border bg-card py-0.5 pr-2 pl-1 text-[11px]" />
+              }
+            >
+              <span className="flex size-4 shrink-0 items-center justify-center rounded bg-muted text-[10px] font-medium text-muted-foreground tnum">
+                {i + 1}
+              </span>
+              <span className="truncate text-foreground/80">{label}</span>
+              <span className="shrink-0 text-muted-foreground tnum">
+                {Math.round(src.similarity * 100)}%
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">
+              <span className="block text-left">
+                <span className="block font-medium">{label}</span>
+                <span className="mt-0.5 block opacity-80">
+                  {src.chunkCount > 1
+                    ? `${src.chunkCount} matching chunks`
+                    : "1 matching chunk"}
+                </span>
+                {src.content && (
+                  <span className="mt-1 block line-clamp-4 opacity-70">
+                    {src.content}
+                  </span>
+                )}
+              </span>
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
 
-function WebSearchResults({ searches }: { searches: { query: string; results: WebSearchResult[] }[] }) {
+function WebSearchResults({
+  searches,
+}: {
+  searches: { query: string; results: WebSearchResult[] }[];
+}) {
   return (
-    <div className="mb-2 space-y-2">
+    <div className="mb-3 space-y-2">
       {searches.map((search, i) => (
-        <div
-          key={i}
-          className="rounded-xl border border-[#0d2847]/10 bg-[#0d2847]/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.02]"
-        >
-          <div className="mb-2 flex items-center gap-1.5">
-            <Globe className="h-3.5 w-3.5 text-[#0d2847]/40 dark:text-white/40" />
-            <span className="text-xs font-medium text-[#0d2847]/50 dark:text-white/40">
-              Searched: {search.query}
+        <div key={i} className="rounded-lg border bg-muted/30 p-2.5">
+          <div className="flex items-center gap-1.5">
+            <Globe className="size-3 shrink-0 text-muted-foreground" />
+            <span className="truncate text-[11px] text-muted-foreground">
+              Searched the web for “{search.query}”
             </span>
           </div>
-          <div className="space-y-1.5">
+
+          <div className="mt-1.5 space-y-px">
             {search.results.slice(0, 3).map((result, j) => (
               <a
                 key={j}
                 href={result.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group flex items-start gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-[#0d2847]/5 dark:hover:bg-white/5"
+                className="group/link flex items-start gap-1.5 rounded px-1 py-1 transition-colors outline-none hover:bg-background focus-visible:ring-3 focus-visible:ring-ring/50"
               >
-                <ExternalLink className="mt-0.5 h-3 w-3 flex-shrink-0 text-[#0d2847]/30 group-hover:text-[#0d2847]/60 dark:text-white/30 dark:group-hover:text-white/60" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-[#0d2847]/70 group-hover:text-[#0d2847] dark:text-white/60 dark:group-hover:text-white">
+                <ExternalLink className="mt-0.5 size-2.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[11px] font-medium text-foreground/80 group-hover/link:text-primary">
                     {result.title}
-                  </p>
-                  <p className="line-clamp-1 text-xs text-[#0d2847]/40 dark:text-white/30">
+                  </span>
+                  <span className="line-clamp-1 text-[11px] text-muted-foreground">
                     {result.content}
-                  </p>
-                </div>
+                  </span>
+                </span>
               </a>
             ))}
           </div>
@@ -402,51 +514,93 @@ function WebSearchResults({ searches }: { searches: { query: string; results: We
   );
 }
 
-function ChatInput({
+function Composer({
   input,
   setInput,
   hasSources,
   isStreaming,
-  onSubmit,
+  model,
+  sourceCount,
+  onSend,
   onStop,
 }: {
   input: string;
   setInput: (v: string) => void;
   hasSources: boolean;
   isStreaming: boolean;
-  onSubmit: (e: React.FormEvent) => void;
+  model: string;
+  sourceCount: number;
+  onSend: () => void;
   onStop: () => void;
 }) {
   return (
-    <div className="border-t border-white/20 px-4 py-4 dark:border-white/10">
-      <form onSubmit={onSubmit} className="mx-auto flex max-w-2xl items-center gap-2">
-        <div className="relative flex-1">
-          <input
-            type="text"
+    <div className="flex-shrink-0 border-t px-4 py-3">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSend();
+        }}
+        className="mx-auto w-full max-w-3xl"
+      >
+        <div className="flex items-end gap-2 rounded-xl border bg-card p-1.5 transition-colors focus-within:border-ring/60">
+          <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={hasSources ? "Ask a question about your sources..." : "Add sources first to start chatting"}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                onSend();
+              }
+            }}
+            rows={1}
             disabled={!hasSources}
-            className="w-full rounded-xl border border-[#0d2847]/10 bg-white/60 px-4 py-3 pr-12 text-sm text-[#0d2847] placeholder:text-[#0d2847]/30 focus:border-[#0d2847]/30 focus:outline-none focus:ring-2 focus:ring-[#0d2847]/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/30 dark:focus:border-white/20 dark:focus:ring-white/10"
+            placeholder={
+              hasSources
+                ? "Ask a question about your sources…"
+                : "Add a source to start asking questions"
+            }
+            aria-label="Message"
+            className="max-h-40 min-h-8 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
+
+          {isStreaming ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              onClick={onStop}
+              aria-label="Stop generating"
+              className="shrink-0"
+            >
+              <Square className="text-destructive" />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="icon-sm"
+              disabled={!input.trim() || !hasSources}
+              aria-label="Send message"
+              className="shrink-0"
+            >
+              <Send />
+            </Button>
+          )}
         </div>
-        {isStreaming ? (
-          <button
-            type="button"
-            onClick={onStop}
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-red-500 text-white transition-all hover:scale-[1.05]"
-          >
-            <Square className="h-4 w-4" />
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!input.trim() || !hasSources}
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-[#0d2847] text-white transition-all hover:scale-[1.05] disabled:opacity-30 disabled:hover:scale-100 dark:bg-white/10 dark:hover:bg-white/15"
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        )}
+
+        <div className="mt-1.5 flex items-center justify-between px-1 text-[11px] text-muted-foreground">
+          <span className="truncate tnum">
+            {hasSources
+              ? `${pluralize(sourceCount, "source")} · ${model}`
+              : "No sources indexed yet"}
+          </span>
+          {hasSources && (
+            <span className="hidden shrink-0 items-center gap-1 sm:flex">
+              <Kbd>↵</Kbd> send
+              <span className="mx-0.5 opacity-40">·</span>
+              <Kbd>⇧↵</Kbd> newline
+            </span>
+          )}
+        </div>
       </form>
     </div>
   );
