@@ -3,6 +3,8 @@
 import { useState, useCallback, useRef } from "react";
 import { chatApi, Message, ChatSource, WebSearchResult } from "@/lib/api";
 
+export type ChatPhase = "thinking" | "searching" | "reading" | "answering";
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -10,6 +12,9 @@ export interface ChatMessage {
   sourcesUsed: ChatSource[] | null;
   webSearchResults: { query: string; results: WebSearchResult[] }[] | null;
   isStreaming?: boolean;
+  phase?: ChatPhase;
+  /** Extra context for the current phase, e.g. the active web search query. */
+  phaseDetail?: string;
 }
 
 export function useChat(notebookId: string) {
@@ -57,6 +62,7 @@ export function useChat(notebookId: string) {
       sourcesUsed: null,
       webSearchResults: null,
       isStreaming: true,
+      phase: "thinking",
     };
 
     setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg]);
@@ -92,20 +98,54 @@ export function useChat(notebookId: string) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === tempAssistantMsg.id || m.id === realAssistantId
-                ? { ...m, id: realAssistantId, content: assistantContent, isStreaming: true }
+                ? {
+                    ...m,
+                    id: realAssistantId,
+                    content: assistantContent,
+                    isStreaming: true,
+                    phase: "answering",
+                    phaseDetail: undefined,
+                  }
                 : m
             )
           );
         },
         onSources: (sources) => {
           assistantSources = sources;
+          // Only reflect "reading" while we haven't started answering yet.
+          setMessages((prev) =>
+            prev.map((m) =>
+              (m.id === tempAssistantMsg.id || m.id === realAssistantId) && !assistantContent
+                ? { ...m, id: realAssistantId, phase: "reading" }
+                : m
+            )
+          );
+        },
+        onWebSearchStart: (data) => {
+          // Fires before the search runs, so this status is live rather than
+          // retroactive. Tool calls can happen mid-stream, so only show it as a
+          // status while there's no answer text yet.
+          setMessages((prev) =>
+            prev.map((m) =>
+              (m.id === tempAssistantMsg.id || m.id === realAssistantId) && !assistantContent
+                ? { ...m, id: realAssistantId, phase: "searching", phaseDetail: data.query }
+                : m
+            )
+          );
         },
         onWebSearch: (data) => {
           assistantWebSearchResults = [...assistantWebSearchResults, data];
           setMessages((prev) =>
             prev.map((m) =>
               m.id === tempAssistantMsg.id || m.id === realAssistantId
-                ? { ...m, id: realAssistantId, webSearchResults: assistantWebSearchResults }
+                ? {
+                    ...m,
+                    id: realAssistantId,
+                    webSearchResults: assistantWebSearchResults,
+                    // Results are in; the model is now composing the answer.
+                    phase: assistantContent ? m.phase : "answering",
+                    phaseDetail: undefined,
+                  }
                 : m
             )
           );
@@ -114,7 +154,7 @@ export function useChat(notebookId: string) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === realAssistantId
-                ? { ...m, content: assistantContent, sourcesUsed: assistantSources, webSearchResults: assistantWebSearchResults.length > 0 ? assistantWebSearchResults : null, isStreaming: false }
+                ? { ...m, content: assistantContent, sourcesUsed: assistantSources, webSearchResults: assistantWebSearchResults.length > 0 ? assistantWebSearchResults : null, isStreaming: false, phase: undefined, phaseDetail: undefined }
                 : m
             )
           );
@@ -125,7 +165,7 @@ export function useChat(notebookId: string) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === tempAssistantMsg.id || m.id === realAssistantId
-                ? { ...m, content: `Error: ${error}`, isStreaming: false }
+                ? { ...m, content: `Error: ${error}`, isStreaming: false, phase: undefined, phaseDetail: undefined }
                 : m
             )
           );
@@ -143,7 +183,11 @@ export function useChat(notebookId: string) {
     setIsStreaming(false);
     setIsLoading(false);
     setMessages((prev) =>
-      prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
+      prev.map((m) =>
+        m.isStreaming
+          ? { ...m, isStreaming: false, phase: undefined, phaseDetail: undefined }
+          : m
+      )
     );
   }, []);
 

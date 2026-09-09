@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Notebook, ChatSource, WebSearchResult } from "@/lib/api";
 import { useSources } from "@/hooks/use-sources";
-import { useChat, ChatMessage } from "@/hooks/use-chat";
+import { useChat, ChatMessage, ChatPhase } from "@/hooks/use-chat";
 import { useConversations, useDeleteConversation } from "@/hooks/use-conversations";
 import { pluralize, relativeTime } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -70,7 +70,8 @@ export function ChatArea({
 
   const [input, setInput] = useState("");
   const [showHistory, setShowHistory] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const lastLoadedConvRef = useRef<string | null>(null);
   const skipNextLoadRef = useRef(false);
 
@@ -105,9 +106,28 @@ export function ChatArea({
     onConversationChange?.(conversationId);
   }, [conversationId, onConversationChange]);
 
-  // Auto-scroll on new messages
+  /**
+   * Track whether the user is parked at the bottom. Anything further up means
+   * they're reading back, so streaming shouldn't drag them down.
+   */
+  const handleMessagesScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 80;
+  };
+
+  /*
+   * Scroll the message container itself rather than calling scrollIntoView on a
+   * sentinel. scrollIntoView walks up and scrolls *every* scrollable ancestor,
+   * the document included, which pulls the whole app past the header and leaves
+   * a blank gap below the composer. Setting scrollTop can only ever move this
+   * one element.
+   */
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el || !stickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   // Refetch conversations when a conversation completes
@@ -119,6 +139,8 @@ export function ChatArea({
 
   const handleSend = () => {
     if (!input.trim() || !hasSources || isStreaming) return;
+    // Sending is an explicit intent to see the reply, so re-anchor to the bottom.
+    stickToBottomRef.current = true;
     sendMessage(input);
     setInput("");
   };
@@ -152,7 +174,7 @@ export function ChatArea({
   if (messages.length === 0 && !showHistory) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-8">
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-8">
           {!hasSources ? (
             <Empty>
               <EmptyHeader>
@@ -284,7 +306,11 @@ export function ChatArea({
   // Active chat
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={scrollRef}
+        onScroll={handleMessagesScroll}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+      >
         <div className="mx-auto max-w-3xl">
           <div className="mb-4 flex items-center justify-between border-b pb-2.5">
             <Button
@@ -312,7 +338,6 @@ export function ChatArea({
               <MessageRow key={msg.id} message={msg} />
             ))}
           </div>
-          <div ref={messagesEndRef} />
         </div>
       </div>
 
@@ -350,14 +375,21 @@ function MessageRow({ message }: { message: ChatMessage }) {
           <WebSearchResults searches={message.webSearchResults} />
         )}
 
-        <div className="text-sm leading-relaxed text-foreground/90">
-          <p className="whitespace-pre-wrap break-words">
-            {message.content}
-            {message.isStreaming && (
-              <span className="ml-0.5 inline-block h-3.5 w-px animate-pulse bg-foreground align-middle" />
-            )}
-          </p>
-        </div>
+        {message.isStreaming && !message.content ? (
+          <StatusIndicator
+            phase={message.phase ?? "thinking"}
+            detail={message.phaseDetail}
+          />
+        ) : (
+          <div className="text-sm leading-relaxed text-foreground/90">
+            <p className="whitespace-pre-wrap break-words">
+              {message.content}
+              {message.isStreaming && (
+                <span className="ml-0.5 inline-block h-3.5 w-px animate-caret-blink bg-foreground align-middle" />
+              )}
+            </p>
+          </div>
+        )}
 
         {message.sourcesUsed &&
           message.sourcesUsed.length > 0 &&
@@ -369,6 +401,126 @@ function MessageRow({ message }: { message: ChatMessage }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const PHASE_LABELS: Record<ChatPhase, string> = {
+  thinking: "Thinking",
+  reading: "Reading your sources",
+  searching: "Searching the web",
+  answering: "Answering",
+};
+
+/** How long a status must stay on screen before it can be replaced. */
+const MIN_PHASE_MS = 600;
+/**
+ * Once retrieval/search is done the model is already generating, but no event
+ * marks that moment. Advance to "Answering" after the prior status has had its
+ * turn so the label doesn't sit on a stale step.
+ */
+const ADVANCE_TO_ANSWERING_MS = 1100;
+
+/**
+ * Holds a phase on screen for at least `MIN_PHASE_MS`. Stream events can land
+ * milliseconds apart (`sources` follows `metadata` almost immediately), which
+ * without this reads as a flicker rather than a status.
+ */
+interface PhaseState {
+  phase: ChatPhase;
+  detail?: string;
+}
+
+function useStablePhase(phase: ChatPhase, detail?: string) {
+  const [shown, setShown] = useState<PhaseState>({ phase, detail });
+
+  // Mirrors `shown` so the timers below can compare without depending on it.
+  const shownRef = useRef<PhaseState>({ phase, detail });
+  // Lazily set inside the effect — reading a clock during render isn't pure.
+  const shownAtRef = useRef<number | null>(null);
+
+  /*
+   * Deliberately keyed on the incoming stream phase alone. An earlier version
+   * also depended on `shown`, which let the inferred "answering" step disagree
+   * with the `phase` prop and get reverted, bouncing the label between
+   * "Reading your sources" and "Answering" indefinitely. With only real events
+   * as input there's no feedback loop: each phase schedules its own sequence and
+   * the cleanup cancels anything still pending.
+   */
+  useEffect(() => {
+    const timers: number[] = [];
+    const now = Date.now();
+    if (shownAtRef.current === null) shownAtRef.current = now;
+
+    const commit = (next: PhaseState) => {
+      const prev = shownRef.current;
+      if (prev.phase === next.phase && prev.detail === next.detail) return;
+      shownRef.current = next;
+      shownAtRef.current = Date.now();
+      setShown(next);
+    };
+
+    // Let the current label finish its turn before showing the next one.
+    const hold = Math.max(0, MIN_PHASE_MS - (now - shownAtRef.current));
+
+    // Always deferred, so this never sets state synchronously during the effect.
+    timers.push(window.setTimeout(() => commit({ phase, detail }), hold));
+
+    // Retrieval and search are the final events before tokens arrive, so the
+    // label would otherwise sit there describing work that's already done.
+    if (phase === "thinking" || phase === "reading") {
+      timers.push(
+        window.setTimeout(
+          () => commit({ phase: "answering" }),
+          hold + ADVANCE_TO_ANSWERING_MS
+        )
+      );
+    }
+
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [phase, detail]);
+
+  return shown;
+}
+
+function StatusIndicator({
+  phase,
+  detail,
+}: {
+  phase: ChatPhase;
+  detail?: string;
+}) {
+  const shown = useStablePhase(phase, detail);
+  const label = PHASE_LABELS[shown.phase];
+  const full = shown.detail ? `${label} · “${shown.detail}”` : label;
+
+  return (
+    <div className="flex items-center gap-2 py-0.5">
+      <span className="flex items-center gap-[3px]" aria-hidden="true">
+        <span className="size-1.5 animate-thinking-dot rounded-full bg-foreground/35 [animation-delay:0ms]" />
+        <span className="size-1.5 animate-thinking-dot rounded-full bg-foreground/35 [animation-delay:160ms]" />
+        <span className="size-1.5 animate-thinking-dot rounded-full bg-foreground/35 [animation-delay:320ms]" />
+      </span>
+
+      {/* Keyed so each status crossfades in instead of snapping. */}
+      <span
+        key={full}
+        className="animate-status-in min-w-0 text-sm font-medium tracking-tight"
+      >
+        <span className="animate-text-shimmer bg-clip-text text-transparent">
+          {label}
+        </span>
+        {shown.detail && (
+          <span className="ml-1 truncate text-muted-foreground/70">
+            “{shown.detail}”
+          </span>
+        )}
+      </span>
+
+      {/* One live region for screen readers, kept out of the visual crossfade. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {full}
+      </span>
     </div>
   );
 }

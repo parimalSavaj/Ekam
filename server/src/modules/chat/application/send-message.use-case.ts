@@ -156,6 +156,10 @@ export class SendMessageUseCase {
         },
         execute: async (args: { query: string }) => {
           this.logger.info("web_search tool called", { conversationId, query: args.query, rawArgs: JSON.stringify(args) });
+          // Announce the search *before* it runs so the client can show a live
+          // "Searching the web" status. The `web_search` event below only fires
+          // once results are already back, which is too late to be a status.
+          this.sendSSE(res, "web_search_start", { query: args.query });
           try {
             const searchResult = await this.webSearchService.search(args.query, { maxResults: 5 });
             this.logger.info("web_search tool completed", { conversationId, resultCount: searchResult.results.length });

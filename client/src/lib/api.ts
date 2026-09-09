@@ -227,6 +227,7 @@ export const chatApi = {
       onMetadata?: (meta: { conversationId: string; messageId: string }) => void;
       onChunk?: (text: string) => void;
       onSources?: (sources: ChatSource[]) => void;
+      onWebSearchStart?: (data: { query: string }) => void;
       onWebSearch?: (results: { query: string; results: WebSearchResult[] }) => void;
       onDone?: (result: { totalTokens: number }) => void;
       onError?: (error: string) => void;
@@ -284,6 +285,9 @@ export const chatApi = {
                     break;
                   case "sources":
                     callbacks.onSources?.(parsed);
+                    break;
+                  case "web_search_start":
+                    callbacks.onWebSearchStart?.(parsed);
                     break;
                   case "web_search":
                     callbacks.onWebSearch?.(parsed);
