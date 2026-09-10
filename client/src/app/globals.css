@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-geist-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -56,140 +56,131 @@
 }
 
 /*
- * Palette — Windows 11 inspired: icy blue-white in light, deep navy in dark.
+ * Palette — sourced from a warm navy/slate/sage/tan/cream swatch set:
+ *   #0D1B2A  #1B263B  #415A77  #778D7A  #D4C4A8  #F4F1DE
  *
- * The cool cast is the product's identity, so surfaces stay tinted. What keeps
- * it from feeling decorative is that depth is expressed through layered surface
- * lightness (background -> sidebar -> card -> popover) and crisp 1px borders,
- * never through blur or floating gradients.
- */
-/*
- * Two deliberate rules keep this coherent:
+ * Light mode reads off the warm end of the strip (cream -> tan), dark mode
+ * off the cool end (navy -> slate). Primary/info/ring are built from the
+ * slate blue (#415A77); success from the sage; warning from the tan.
+ * Destructive stays a true red — it isn't in the source palette, and status
+ * red needs to read as an alarm, not a variant of the warm neutrals.
  *
- * 1. Every neutral surface and text token sits on hue 245 — the ice/navy axis.
- *    The original palette drifted across 225-270, which is what makes a tinted
- *    grey look muddy: adjacent surfaces disagree about which blue they are.
- *    Only the accent leaves the axis (262), so "interactive" reads as a
- *    different family rather than a slightly different grey.
- *
- * 2. Elevation is a monotonic lightness ladder, and chroma falls as surfaces
- *    rise. Light: background .955 -> card .985 -> popover .995. Dark: background
- *    .135 -> sidebar .155 -> card .178 -> popover .205. Recessed fills (sidebar,
- *    muted) move the other way and hold more tint.
+ * Same two structural rules as before:
+ * 1. Neutral surfaces and text share one hue axis per mode (~90-99 warm in
+ *    light, ~251-263 cool in dark) so adjacent surfaces agree on their tint.
+ * 2. Elevation is a monotonic lightness ladder: light sidebar .92 -> background
+ *    .955 -> card .975 -> popover .99. Dark background .218 -> sidebar .269 ->
+ *    card .31 -> popover .35.
  */
 :root {
   color-scheme: light;
   --radius: 0.5rem;
 
-  /* Recessed -> raised */
-  --sidebar: oklch(0.935 0.024 245);
-  --background: oklch(0.955 0.018 245);
-  --card: oklch(0.985 0.01 245);
-  --popover: oklch(0.995 0.005 245);
+  /* Recessed -> raised, cream/tan axis */
+  --sidebar: oklch(0.92 0.035 92);
+  --background: oklch(0.955 0.025 99.5);
+  --card: oklch(0.975 0.018 99.5);
+  --popover: oklch(0.99 0.01 99.5);
 
-  --foreground: oklch(0.2 0.035 245);
-  --card-foreground: oklch(0.2 0.035 245);
-  --popover-foreground: oklch(0.2 0.035 245);
-  --sidebar-foreground: oklch(0.2 0.035 245);
+  --foreground: oklch(0.22 0.036 251);
+  --card-foreground: oklch(0.22 0.036 251);
+  --popover-foreground: oklch(0.22 0.036 251);
+  --sidebar-foreground: oklch(0.22 0.036 251);
 
-  /* Accent leaves the surface axis so actions read as their own family. */
-  --primary: oklch(0.48 0.21 262);
-  --primary-foreground: oklch(0.99 0.002 245);
+  /* Slate blue (#415A77) carries the accent. */
+  --primary: oklch(0.46 0.07 252);
+  --primary-foreground: oklch(0.99 0.01 99.5);
 
-  --secondary: oklch(0.905 0.03 245);
-  --secondary-foreground: oklch(0.22 0.035 245);
+  --secondary: oklch(0.9 0.03 85);
+  --secondary-foreground: oklch(0.22 0.036 251);
 
-  --muted: oklch(0.915 0.026 245);
-  --muted-foreground: oklch(0.44 0.035 245);
+  --muted: oklch(0.91 0.028 88);
+  --muted-foreground: oklch(0.46 0.05 255);
 
-  --accent: oklch(0.875 0.045 245);
-  --accent-foreground: oklch(0.2 0.035 245);
+  --accent: oklch(0.865 0.045 145);
+  --accent-foreground: oklch(0.22 0.036 251);
 
-  /* Status hues share a lightness band so they feel like one family. */
   --destructive: oklch(0.53 0.21 27);
   --destructive-foreground: oklch(0.99 0.002 245);
-  --success: oklch(0.52 0.13 155);
-  --success-foreground: oklch(0.99 0.002 245);
-  --warning: oklch(0.6 0.14 72);
-  --warning-foreground: oklch(0.99 0.002 245);
-  --info: oklch(0.52 0.17 250);
-  --info-foreground: oklch(0.99 0.002 245);
+  /* Sage (#778D7A). */
+  --success: oklch(0.53 0.08 149);
+  --success-foreground: oklch(0.99 0.01 99.5);
+  /* Tan (#D4C4A8). */
+  --warning: oklch(0.6 0.1 82);
+  --warning-foreground: oklch(0.22 0.036 251);
+  --info: oklch(0.49 0.095 252);
+  --info-foreground: oklch(0.99 0.01 99.5);
 
-  --border: oklch(0.865 0.03 245);
-  --input: oklch(0.885 0.028 245);
-  --ring: oklch(0.48 0.21 262);
+  --border: oklch(0.76 0.038 90);
+  --input: oklch(0.72 0.04 90);
+  --ring: oklch(0.46 0.07 252);
 
-  --chart-1: oklch(0.48 0.21 262);
-  --chart-2: oklch(0.56 0.16 240);
-  --chart-3: oklch(0.63 0.13 220);
-  --chart-4: oklch(0.46 0.18 280);
-  --chart-5: oklch(0.68 0.11 250);
+  --chart-1: oklch(0.46 0.07 252);
+  --chart-2: oklch(0.53 0.08 149);
+  --chart-3: oklch(0.6 0.1 82);
+  --chart-4: oklch(0.36 0.045 258);
+  --chart-5: oklch(0.68 0.05 149);
 
-  --sidebar-primary: oklch(0.48 0.21 262);
-  --sidebar-primary-foreground: oklch(0.99 0.002 245);
-  --sidebar-accent: oklch(0.875 0.045 245);
-  --sidebar-accent-foreground: oklch(0.2 0.035 245);
-  --sidebar-border: oklch(0.865 0.03 245);
-  --sidebar-ring: oklch(0.48 0.21 262);
+  --sidebar-primary: oklch(0.46 0.07 252);
+  --sidebar-primary-foreground: oklch(0.99 0.01 99.5);
+  --sidebar-accent: oklch(0.865 0.045 145);
+  --sidebar-accent-foreground: oklch(0.22 0.036 251);
+  --sidebar-border: oklch(0.76 0.038 90);
+  --sidebar-ring: oklch(0.46 0.07 252);
 }
 
 .dark {
   color-scheme: dark;
 
-  /* Recessed -> raised */
-  --background: oklch(0.135 0.032 245);
-  --sidebar: oklch(0.155 0.034 245);
-  --card: oklch(0.178 0.036 245);
-  --popover: oklch(0.205 0.038 245);
+  /* Recessed -> raised, navy/slate axis: #0D1B2A -> #1B263B -> ... */
+  --background: oklch(0.218 0.036 251);
+  --sidebar: oklch(0.269 0.042 263);
+  --card: oklch(0.31 0.045 258);
+  --popover: oklch(0.35 0.048 256);
 
-  --foreground: oklch(0.94 0.012 245);
-  --card-foreground: oklch(0.94 0.012 245);
-  --popover-foreground: oklch(0.94 0.012 245);
-  --sidebar-foreground: oklch(0.94 0.012 245);
+  --foreground: oklch(0.955 0.02 90);
+  --card-foreground: oklch(0.955 0.02 90);
+  --popover-foreground: oklch(0.955 0.02 90);
+  --sidebar-foreground: oklch(0.955 0.02 90);
 
-  /* Chroma pulled to 0.205 so the accent stays inside sRGB instead of clipping. */
-  --primary: oklch(0.58 0.205 262);
-  --primary-foreground: oklch(0.99 0.002 245);
+  /* Lightened slate blue so it holds its own against the dark navy surfaces. */
+  --primary: oklch(0.66 0.09 252);
+  --primary-foreground: oklch(0.16 0.03 251);
 
-  --secondary: oklch(0.215 0.038 245);
-  --secondary-foreground: oklch(0.94 0.012 245);
+  --secondary: oklch(0.34 0.045 258);
+  --secondary-foreground: oklch(0.955 0.02 90);
 
-  --muted: oklch(0.225 0.038 245);
-  --muted-foreground: oklch(0.645 0.035 245);
+  --muted: oklch(0.3 0.04 258);
+  --muted-foreground: oklch(0.7 0.025 90);
 
-  --accent: oklch(0.255 0.052 250);
-  --accent-foreground: oklch(0.94 0.012 245);
+  --accent: oklch(0.34 0.05 210);
+  --accent-foreground: oklch(0.955 0.02 90);
 
-  --destructive: oklch(0.66 0.19 25);
-  --destructive-foreground: oklch(0.99 0.002 245);
-  --success: oklch(0.72 0.15 158);
-  --success-foreground: oklch(0.16 0.03 158);
-  --warning: oklch(0.79 0.14 78);
-  --warning-foreground: oklch(0.18 0.03 78);
-  --info: oklch(0.7 0.16 245);
-  --info-foreground: oklch(0.16 0.03 245);
+  --destructive: oklch(0.62 0.19 25);
+  --destructive-foreground: oklch(0.16 0.03 25);
+  --success: oklch(0.73 0.09 149);
+  --success-foreground: oklch(0.17 0.03 149);
+  --warning: oklch(0.8 0.06 82);
+  --warning-foreground: oklch(0.19 0.03 82);
+  --info: oklch(0.72 0.09 252);
+  --info-foreground: oklch(0.17 0.03 252);
 
-  /*
-   * Solid rather than the original 40%/50% alpha: structure now leans on
-   * borders instead of glass, so they must hold up on every surface in the
-   * ladder, not just the darkest one.
-   */
-  --border: oklch(0.305 0.038 245);
-  --input: oklch(0.325 0.04 245);
-  --ring: oklch(0.58 0.205 262);
+  --border: oklch(0.42 0.045 258);
+  --input: oklch(0.46 0.045 258);
+  --ring: oklch(0.66 0.09 252);
 
-  --chart-1: oklch(0.62 0.19 262);
-  --chart-2: oklch(0.66 0.15 240);
-  --chart-3: oklch(0.72 0.12 220);
-  --chart-4: oklch(0.56 0.19 285);
-  --chart-5: oklch(0.76 0.1 250);
+  --chart-1: oklch(0.66 0.09 252);
+  --chart-2: oklch(0.73 0.09 149);
+  --chart-3: oklch(0.8 0.06 82);
+  --chart-4: oklch(0.5 0.06 258);
+  --chart-5: oklch(0.85 0.04 149);
 
-  --sidebar-primary: oklch(0.58 0.205 262);
-  --sidebar-primary-foreground: oklch(0.99 0.002 245);
-  --sidebar-accent: oklch(0.245 0.048 250);
-  --sidebar-accent-foreground: oklch(0.94 0.012 245);
-  --sidebar-border: oklch(0.305 0.038 245);
-  --sidebar-ring: oklch(0.58 0.205 262);
+  --sidebar-primary: oklch(0.66 0.09 252);
+  --sidebar-primary-foreground: oklch(0.16 0.03 251);
+  --sidebar-accent: oklch(0.34 0.05 210);
+  --sidebar-accent-foreground: oklch(0.955 0.02 90);
+  --sidebar-border: oklch(0.42 0.045 258);
+  --sidebar-ring: oklch(0.66 0.09 252);
 }
 
 @layer base {
