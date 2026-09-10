@@ -58,12 +58,6 @@ export function createApp({ db, idService, logger, authService, queueService, re
     res.status(200).json({ status: "ok" });
   });
 
-  // Queue service endpoint for background job execution
-  const handler = queueService.getRequestHandler();
-  if (handler) {
-    app.use("/api/inngest", handler as express.RequestHandler);
-  }
-
   // Feature module routes
   registerRoutes({ app, db, idService, logger, queueService, retrievalService, llmService, webSearchService, authMiddleware });
 

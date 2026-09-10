@@ -15,7 +15,7 @@ import { aiConfig } from "../../../shared/config/ai.config.ts";
 import { LlmMessage } from "../../../infrastructure/external-services/llm/llm.types.ts";
 import { LlmToolDefinition } from "../../../infrastructure/external-services/llm/llm.external-service.interface.ts";
 import { SourceReference } from "../../../infrastructure/repositories/messages/messages.types.ts";
-import { SUMMARIZE_CONVERSATION_JOB } from "../../../jobs/workers/summarize-conversation/summarize-conversation.types.ts";
+import { SUMMARIZE_CONVERSATION_JOB } from "../../../shared/contracts/job-contracts.ts";
 import { SendMessageRequestDto, SendMessageSourceDto } from "./dtos/send-message.dto.ts";
 
 export class SendMessageUseCase {

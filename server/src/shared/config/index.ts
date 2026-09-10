@@ -12,12 +12,8 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string(),
   GOOGLE_CLIENT_SECRET: z.string(),
   OPENROUTER_API_KEY: z.string(),
-  FIRECRAWL_API_KEY: z.string(),
   TAVILY_API_KEY: z.string(),
-  CLOUDINARY_CLOUD_NAME: z.string(),
-  CLOUDINARY_API_KEY: z.string(),
-  CLOUDINARY_API_SECRET: z.string(),
-  CLOUDINARY_UPLOAD_PRESET: z.string(),
+  INNGEST_EVENT_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -37,12 +33,6 @@ export const config = {
   googleClientId: parsed.data.GOOGLE_CLIENT_ID,
   googleClientSecret: parsed.data.GOOGLE_CLIENT_SECRET,
   openrouterApiKey: parsed.data.OPENROUTER_API_KEY,
-  firecrawlApiKey: parsed.data.FIRECRAWL_API_KEY,
   tavilyApiKey: parsed.data.TAVILY_API_KEY,
-  cloudinary: {
-    cloudName: parsed.data.CLOUDINARY_CLOUD_NAME,
-    apiKey: parsed.data.CLOUDINARY_API_KEY,
-    apiSecret: parsed.data.CLOUDINARY_API_SECRET,
-    uploadPreset: parsed.data.CLOUDINARY_UPLOAD_PRESET,
-  },
+  inngestEventKey: parsed.data.INNGEST_EVENT_KEY,
 } as const;

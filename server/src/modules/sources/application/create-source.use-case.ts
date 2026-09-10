@@ -5,7 +5,7 @@ import { ILoggerService } from "../../../shared/services/logger/logger.service.i
 import { IQueueService } from "../../../shared/services/queue/queue.service.interface.ts";
 import { NotFoundError, InternalError } from "../../../shared/core/api-error.ts";
 import { SourceEntity } from "../../../domain/entities/source.entity.ts";
-import { PROCESS_SOURCE_JOB, ProcessSourcePayload } from "../../../jobs/workers/process-source/process-source.types.ts";
+import { PROCESS_SOURCE_JOB, ProcessSourcePayload } from "../../../shared/contracts/job-contracts.ts";
 import { CreateSourceRequestDto, CreateSourceResponseDto } from "./dtos/create-source.dto.ts";
 
 export class CreateSourceUseCase {
