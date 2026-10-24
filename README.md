@@ -1,103 +1,102 @@
-# NotebookLM Clone
+# Ekam
 
-AI-powered notebook app — upload sources (PDF, text, URL, YouTube), process them in the background, and chat with your documents using RAG.
+This repository runs the Ekam client, server and PostgreSQL database together with Docker for local development.
 
-## Architecture
+| Folder | What it is |
+| --- | --- |
+| `client/` | Next.js frontend (its own repo, git submodule) |
+| `server/` | Express + TypeScript API (its own repo, git submodule) |
 
-Three independently deployable services, each with its own `package.json`, `node_modules`, and `.env`:
+## Requirements
 
-| Folder | Responsibility | Depends on |
-|--------|-----------------|------------|
-| `client` | Next.js frontend | `server` (REST API) |
-| `server` | REST API — auth, notebooks, sources, chat. Only **sends** Inngest events, never runs them. | Postgres, Inngest (event key) |
-| `worker` | Standalone Inngest job runner — source ingestion (PDF/URL/YouTube parsing, chunking, embeddings) and conversation summaries. Exposes only `/api/inngest`. | Postgres, Inngest (signing key) |
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- `make`. On Windows: `winget install ezwinports.make`, then open a new terminal.
+- Git, with submodules: `git clone --recurse-submodules <repo-url>` (or `git submodule update --init` after cloning).
 
-`server` and `worker` don't import from each other — no shared package, by design. They only agree on two things: the same Inngest app id (`"notebooklm"`) and the job event contracts in `server/src/shared/contracts/job-contracts.ts` (must match `worker/src/jobs/workers/**/*.types.ts`).
+Node.js is not needed to run the stack, because the apps run inside Docker. You only need it on your machine to run `npm install` for new packages.
 
-## Prerequisites
+## First-time setup
 
-- Node.js 18+
-- Docker & Docker Compose
-- API keys: Google OAuth, OpenRouter, Tavily (for `server`); OpenRouter, Firecrawl, Cloudinary (for `worker`)
-
-## Quick Start
-
-### 1. Database (PostgreSQL + pgvector)
+Create the two env files from their examples and fill in the values:
 
 ```bash
-docker compose up -d
+cp server/.env.example server/.env
+cp client/.env.example client/.env
 ```
 
-- Postgres: `localhost:5434`
-- pgAdmin: `http://localhost:5050` (admin@admin.com / admin)
+PowerShell: `Copy-Item server\.env.example server\.env` (same for `client`).
 
-### 2. Server
+| File | Variable | Meaning |
+| --- | --- | --- |
+| `server/.env` | `PORT` | Port of the API on your machine |
+| `server/.env` | `DB_PORT` | Port of PostgreSQL on your machine |
+| `server/.env` | `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Credentials PostgreSQL is created with |
+| `server/.env` | `HOST`, `NODE_ENV` | Server settings. `HOST` is overridden inside Docker |
+| `server/.env` | `DB_HOST` | Database host for running the server outside Docker. Overridden inside Docker |
+| `client/.env` | `CLIENT_PORT` | Port of the client on your machine |
+
+If a port is already used on your machine, change it in the `.env` file and run `make restart`. Real `.env` files are ignored by Git. Only the `.env.example` files are committed.
+
+PostgreSQL only reads `DB_USER`, `DB_PASSWORD` and `DB_NAME` when its data volume is first created. To change them later you must reset the database volume (see below).
+
+## Everyday commands
+
+Run these from the repository root.
+
+| Command | What it does |
+| --- | --- |
+| `make start` | Build if needed and start PostgreSQL, server and client |
+| `make stop` | Stop and remove the containers. Database data is kept |
+| `make restart` | Stop, then start. Use after changing a `.env` file or `docker-compose.yml` |
+| `make logs` | Follow the logs of all services (Ctrl+C leaves them running) |
+| `make ps` | Show container status |
+| `make db` | Start only the database |
+| `make rebuild` | Use after adding or removing a package. Recreates the `node_modules` volumes and rebuilds |
+
+After `make start`:
+
+- Client: `http://localhost:<CLIENT_PORT>` (default 3000)
+- Server: `http://localhost:<PORT>` (default 5000)
+- PostgreSQL: `localhost:<DB_PORT>`
+
+All ports are bound to `127.0.0.1`, so they are only reachable from your own machine.
+
+## Editing code
+
+Saving a file in `client/` or `server/` updates the running app automatically. The containers watch for changes by polling, because Windows file events do not reach Docker, so a reload can take up to about a second.
+
+## Adding a package
 
 ```bash
-cd server
-cp .env.example .env.local   # fill in your API keys
-npm install
-npm run db:migrate
-npm run dev                   # http://localhost:5000
+cd server        # or client
+npm install some-package
+cd ..
+make rebuild
 ```
 
-### 3. Worker
+`make restart` is not enough. The containers keep their own `node_modules` in Docker volumes, and those are only refreshed by `make rebuild`. The database volume is never touched by it.
+
+## Database
+
+Connect with any PostgreSQL client (for example DBeaver) using host `localhost`, port `DB_PORT`, and the `DB_USER`, `DB_PASSWORD` and `DB_NAME` from `server/.env`.
+
+Data lives in the Docker volume `ekam_ekam_pgdata` and survives `make stop`. To wipe it and start with an empty database (this deletes all data):
 
 ```bash
-cd worker
-cp .env.example .env.local   # fill in your API keys
-npm install
-npm run dev                   # http://localhost:5001
+docker compose --env-file server/.env --env-file client/.env down
+docker volume rm ekam_ekam_pgdata
+make start
 ```
 
-### 4. Client
+### DBeaver: `invalid value for parameter "TimeZone": "Asia/Calcutta"`
 
-```bash
-cd client
-npm install
-npm run dev                   # http://localhost:3000
+Java reports India's timezone under an old name that recent PostgreSQL images reject. Add this line at the end of `dbeaver.ini` (below `-vmargs`), then fully restart DBeaver:
+
+```
+-Duser.timezone=Asia/Kolkata
 ```
 
-### 5. Inngest Dev Server (local dashboard only)
+## Notes
 
-The real Inngest broker (Inngest Cloud) never runs locally — this CLI stands in for it during development, discovering functions from `worker` and routing events sent by `server`.
-
-```bash
-cd worker
-npm run inngest:dev           # http://localhost:8288 (Inngest dashboard)
-```
-
-## Running All Together
-
-> Docker must be running first (`docker compose up -d`).
-
-Open 4 terminals:
-
-| Terminal | Command | Port |
-|----------|---------|------|
-| 1 | `cd server && npm run dev` | 5000 |
-| 2 | `cd worker && npm run dev` | 5001 |
-| 3 | `cd client && npm run dev` | 3000 |
-| 4 | `cd worker && npm run inngest:dev` | 8288 |
-
-## Environment Variables
-
-**Server** (`server/.env.local`) — see `server/.env.example` for all required vars. Notably `INNGEST_EVENT_KEY` (blank for local dev — the dev CLI accepts unsigned events; required once pointed at real Inngest Cloud).
-
-**Worker** (`worker/.env.local`) — see `worker/.env.example` for all required vars. Notably `INNGEST_SIGNING_KEY` (blank for local dev, same reasoning as above).
-
-**Client** (`client/.env.local`):
-```
-NEXT_PUBLIC_API_URL=http://localhost:5000
-```
-
-## Deploying (own infra, not Inngest-hosted)
-
-Inngest Cloud never hosts your code — it's just the event broker + dashboard sitting between `server` and `worker`, both of which you deploy yourself (Railway, Render, a VPS, etc).
-
-1. Deploy `server` and `worker` as two separate services, each with a public HTTPS URL. Both run `npm run build && npm start`.
-2. Remove `INNGEST_DEV=1` from `server`'s production env (that flag is dev-only and points the SDK at `localhost:8288`).
-3. Create a free app on [Inngest Cloud](https://app.inngest.com) named `notebooklm` (must match the `id` used in both services' `Inngest` client).
-4. Copy the **Signing Key** from the Inngest dashboard → set as `INNGEST_SIGNING_KEY` on `worker`'s host.
-5. Copy an **Event Key** from the Inngest dashboard → set as `INNGEST_EVENT_KEY` on `server`'s host.
-6. In the Inngest dashboard, register `worker`'s public URL as the sync URL: `https://<your-worker-host>/api/inngest`. Inngest Cloud will auto-discover the registered functions from there.
+- `docker-compose.yml`, the `Dockerfile.dev` files and these commands are for local development only. Production needs its own Dockerfiles and environment configuration.
+- Each of `client/` and `server/` owns its own `package.json`, lockfile and `.env`.
