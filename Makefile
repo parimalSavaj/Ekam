@@ -7,9 +7,10 @@ COMPOSE = docker compose --env-file server/.env --env-file client/.env
 
 .PHONY: start stop restart rebuild logs ps db
 
-# Build images if needed and start everything in the background
+# Build images if needed, start everything in the background, and wait until
+# the database and the server report healthy (fails if the server does not come up)
 start:
-	$(COMPOSE) up -d --build
+	$(COMPOSE) up -d --build --wait
 
 # Stop everything; data stays in the ekam_pgdata volume
 stop:
@@ -23,7 +24,7 @@ restart: stop start
 rebuild:
 	$(COMPOSE) down
 	-docker volume rm ekam_server_node_modules ekam_client_node_modules ekam_client_next
-	$(COMPOSE) up -d --build
+	$(COMPOSE) up -d --build --wait
 
 # Follow logs of all services (Ctrl+C leaves them running)
 logs:

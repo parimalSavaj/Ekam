@@ -4,21 +4,25 @@
 #   make start   make stop   make logs
 # or directly:
 #   docker compose --env-file server/.env --env-file client/.env up -d --build
+#
+# The local PostgreSQL container only runs when COMPOSE_PROFILES=local-db is set
+# in server/.env. Without it the server uses DATABASE_URL (hosted database).
 name: ekam
 
 services:
   db:
     image: postgres:17
+    profiles: ["local-db"]
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:?Set DB_USER in server/.env}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in server/.env}
-      POSTGRES_DB: ${DB_NAME:?Set DB_NAME in server/.env}
+      POSTGRES_USER: ${DB_USER:-}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-}
+      POSTGRES_DB: ${DB_NAME:-}
       # PostgreSQL listens on DB_PORT inside the container as well
-      PGPORT: ${DB_PORT:?Set DB_PORT in server/.env}
-    command: ["postgres", "-c", "port=${DB_PORT}"]
+      PGPORT: ${DB_PORT:-5432}
+    command: ["postgres", "-c", "port=${DB_PORT:-5432}"]
     ports:
-      - "127.0.0.1:${DB_PORT}:${DB_PORT}"
+      - "127.0.0.1:${DB_PORT:-5432}:${DB_PORT:-5432}"
     volumes:
       - ekam_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -33,25 +37,40 @@ services:
       context: ./server
       dockerfile: Dockerfile.dev
     environment:
-      # Inside Docker the server listens on all interfaces and reaches
-      # PostgreSQL through the "db" service name. PORT, DB_PORT and the
+      # Inside Docker the server listens on all interfaces. With the local
+      # database (DB_PASSWORD set) it reaches PostgreSQL through the "db" service
+      # name; with DATABASE_URL this stays empty and is ignored. DB_PORT and the
       # credentials are read from the mounted server/.env.
       HOST: 0.0.0.0
-      DB_HOST: db
+      PORT: ${PORT:?Set PORT in server/.env}
+      DB_HOST: ${DB_PASSWORD:+db}
       # File change events from Windows do not always reach the container,
       # so watch for changes by polling
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "500"
     ports:
-      - "127.0.0.1:${PORT:?Set PORT in server/.env}:${PORT}"
+      - "127.0.0.1:${PORT}:${PORT}"
     volumes:
       # Live source. server/.env is read from here by the server itself.
       - ./server:/app
       # Keep Linux dependencies in the container, not the Windows node_modules
       - server_node_modules:/app/node_modules
+    healthcheck:
+      # Calls GET /health inside the container; healthy once the server answers 200
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:' + process.env.PORT + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
       db:
         condition: service_healthy
+        # The db service does not exist when the local-db profile is off
+        required: false
 
   client:
     build:

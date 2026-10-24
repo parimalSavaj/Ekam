@@ -33,6 +33,8 @@ PowerShell: `Copy-Item server\.env.example server\.env` (same for `client`).
 | `server/.env` | `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Credentials PostgreSQL is created with |
 | `server/.env` | `HOST`, `NODE_ENV` | Server settings. `HOST` is overridden inside Docker |
 | `server/.env` | `DB_HOST` | Database host for running the server outside Docker. Overridden inside Docker |
+| `server/.env` | `COMPOSE_PROFILES` | Set to `local-db` to start the local PostgreSQL container. Leave it out when using `DATABASE_URL` |
+| `server/.env` | `DATABASE_URL` | Hosted database (for example Neon in production). Use it instead of the five `DB_*` values, never together with them. Production requires `sslmode=require` or stronger in the URL |
 | `client/.env` | `CLIENT_PORT` | Port of the client on your machine |
 
 If a port is already used on your machine, change it in the `.env` file and run `make restart`. Real `.env` files are ignored by Git. Only the `.env.example` files are committed.
