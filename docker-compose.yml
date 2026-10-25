@@ -67,9 +67,30 @@ services:
       retries: 5
       start_period: 20s
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
         # The db service does not exist when the local-db profile is off
+        required: false
+
+  # One-shot schema update, using server-owned scripts and migrations.
+  migrate:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.dev
+    command: ["npm", "run", "db:migrate"]
+    restart: "no"
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${PORT:?Set PORT in server/.env}
+      DB_HOST: ${DB_PASSWORD:+db}
+    volumes:
+      - ./server:/app
+      - server_node_modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
         required: false
 
   client:
@@ -79,6 +100,7 @@ services:
     environment:
       # Next.js dev server listens on this port (it reads PORT)
       PORT: ${CLIENT_PORT:?Set CLIENT_PORT in client/.env}
+      NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL:?Set NEXT_PUBLIC_AUTH_URL in client/.env}
       # File change events from Windows do not always reach the container,
       # so watch for changes by polling (honored by webpack, not Turbopack)
       WATCHPACK_POLLING: "true"
@@ -89,6 +111,19 @@ services:
       - ./client:/app
       - client_node_modules:/app/node_modules
       - client_next:/app/.next
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:' + process.env.PORT + '/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 60s
 
 # Named volumes are reused on every restart. Unnamed ones would leave a new
 # copy behind each time the containers are recreated.
