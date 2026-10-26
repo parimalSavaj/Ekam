@@ -121,6 +121,10 @@ Java reports India's timezone under an old name that recent PostgreSQL images re
 - The client hides protected screens until its session resolves; APIs must independently enforce sessions using `AuthMiddleware.requireSession()`.
 - Production requires HTTPS and an explicit same-site browser deployment (for example `app.example.com` and `api.example.com`). This local Compose setup is not a production deployment. Unrelated frontend/API domains need additional cookie/proxy design.
 
+## Workspaces
+
+Signed-in users manage workspaces at `/workspaces`: create, list, rename and delete. A workspace belongs to the user who created it, other users cannot see or change it, and deleting an account deletes its workspaces. The API is under `/api/workspaces` (see `server/README.md`). It needs the `create-workspaces-table` migration, so run `make start` or `make migrate` after pulling.
+
 ## Notes
 
 - `docker-compose.yml`, the `Dockerfile.dev` files and these commands are for local development only. Production needs its own Dockerfiles and environment configuration.
